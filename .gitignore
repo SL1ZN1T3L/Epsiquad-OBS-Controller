@@ -125,6 +125,7 @@ windows/
 linux/
 web/
 test/
+.github/
 
 # IDE
 .idea/
