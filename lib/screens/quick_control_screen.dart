@@ -486,7 +486,7 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
             (s) => s?.name == config.targetName,
             orElse: () => null,
           );
-          isActive = source?.isMuted ?? false;
+          isActive = !(source?.isMuted ?? true);
           activeColor = config.color ?? Colors.orange;
           onTap = () => provider.toggleAudioMute(config.targetName!);
         }
