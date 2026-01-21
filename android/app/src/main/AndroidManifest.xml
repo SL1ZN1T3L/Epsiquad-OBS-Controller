@@ -24,6 +24,13 @@
     
     <!-- Держать экран включённым -->
     <uses-permission android:name="android.permission.KEEP_SCREEN_ON" />
+    
+    <!-- Установка APK (для обновлений) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    
+    <!-- Доступ к внешнему хранилищу (для скачивания APK) -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <application
         android:label="OBS Controller"
