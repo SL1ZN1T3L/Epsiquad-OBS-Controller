@@ -124,8 +124,7 @@ macos/
 windows/
 linux/
 web/
-test/
-.github/
+.github/*.md
 
 # IDE
 .idea/
