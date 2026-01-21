@@ -45,7 +45,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
       body: Consumer<OBSProvider>(
         builder: (context, provider, _) {
           final connections = provider.connections;
-          
+
           if (connections.isEmpty) {
             return Center(
               child: Column(
@@ -70,7 +70,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
               ),
             );
           }
-          
+
           return Column(
             children: [
               Expanded(
@@ -79,10 +79,11 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
                   itemCount: connections.length,
                   itemBuilder: (context, index) {
                     final connection = connections[index];
-                    final isCurrentConnection = 
+                    final isCurrentConnection =
                         provider.currentConnection?.id == connection.id;
-                    final isConnected = isCurrentConnection && provider.isConnected;
-                    
+                    final isConnected =
+                        isCurrentConnection && provider.isConnected;
+
                     return Card(
                       color: isConnected ? Colors.green.shade900 : null,
                       child: ListTile(
@@ -100,8 +101,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
                         title: Text(
                           connection.name,
                           style: TextStyle(
-                            fontWeight: connection.isDefault 
-                                ? FontWeight.bold 
+                            fontWeight: connection.isDefault
+                                ? FontWeight.bold
                                 : FontWeight.normal,
                           ),
                         ),
@@ -154,7 +155,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
                                 const PopupMenuItem(
                                   value: 'delete',
                                   child: ListTile(
-                                    leading: Icon(Icons.delete, color: Colors.red),
+                                    leading:
+                                        Icon(Icons.delete, color: Colors.red),
                                     title: Text('Удалить'),
                                     dense: true,
                                   ),
@@ -211,12 +213,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final diff = now.difference(date);
-    
+
     if (diff.inMinutes < 1) return 'Только что';
     if (diff.inHours < 1) return '${diff.inMinutes} мин назад';
     if (diff.inDays < 1) return '${diff.inHours} ч назад';
     if (diff.inDays < 7) return '${diff.inDays} дн назад';
-    
+
     return '${date.day}.${date.month}.${date.year}';
   }
 
@@ -226,7 +228,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     OBSConnection connection,
   ) async {
     final provider = context.read<OBSProvider>();
-    
+
     switch (action) {
       case 'edit':
         _editConnection(context, connection);
@@ -239,7 +241,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Удалить подключение?'),
-            content: Text('Вы уверены, что хотите удалить "${connection.name}"?'),
+            content:
+                Text('Вы уверены, что хотите удалить "${connection.name}"?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -247,7 +250,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Удалить', style: TextStyle(color: Colors.red)),
+                child:
+                    const Text('Удалить', style: TextStyle(color: Colors.red)),
               ),
             ],
           ),
@@ -279,7 +283,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
         builder: (_) => const QRScannerScreen(),
       ),
     );
-    
+
     if (result != null && context.mounted) {
       showDialog(
         context: context,
@@ -323,8 +327,9 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       text: widget.connection?.password ?? '',
     );
     _isDefault = widget.connection?.isDefault ?? false;
-    
-    debugPrint('ConnectionDialog init: host=${widget.connection?.host}, password=${widget.connection?.password}');
+
+    debugPrint(
+        'ConnectionDialog init: host=${widget.connection?.host}, password=${widget.connection?.password}');
   }
 
   @override
@@ -338,10 +343,10 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isEditing = widget.connection?.id != null && 
-                      widget.connection!.id.isNotEmpty &&
-                      widget.connection?.lastConnected != null;
-    
+    final isEditing = widget.connection?.id != null &&
+        widget.connection!.id.isNotEmpty &&
+        widget.connection?.lastConnected != null;
+
     return AlertDialog(
       title: Text(isEditing ? 'Редактировать' : 'Новое подключение'),
       content: SingleChildScrollView(
@@ -428,9 +433,8 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     final name = _nameController.text.trim();
     final host = _hostController.text.trim();
     final port = int.tryParse(_portController.text.trim()) ?? 4455;
-    final password = _passwordController.text.isEmpty
-        ? null
-        : _passwordController.text;
+    final password =
+        _passwordController.text.isEmpty ? null : _passwordController.text;
 
     if (host.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -442,13 +446,13 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     setState(() => _isLoading = true);
 
     final provider = context.read<OBSProvider>();
-    
+
     // Определяем, это редактирование существующего или новое
     final existingId = widget.connection?.id;
-    final isExisting = existingId != null && 
-                       existingId.isNotEmpty &&
-                       (provider.connections).any((c) => c.id == existingId);
-    
+    final isExisting = existingId != null &&
+        existingId.isNotEmpty &&
+        (provider.connections).any((c) => c.id == existingId);
+
     final connection = OBSConnection(
       id: isExisting ? existingId : const Uuid().v4(),
       name: name.isEmpty ? host : name,
@@ -559,19 +563,19 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
   void _onDetect(BarcodeCapture capture) {
     if (_isProcessing) return;
-    
+
     final barcode = capture.barcodes.firstOrNull;
     if (barcode == null || barcode.rawValue == null) return;
-    
+
     final value = barcode.rawValue!;
-    
+
     // Избегаем повторной обработки того же кода
     if (value == _lastScanned) return;
     _lastScanned = value;
-    
+
     _isProcessing = true;
     debugPrint('QR Code detected: $value');
-    
+
     try {
       final connection = _parseQRCode(value);
       if (connection != null) {
@@ -598,17 +602,17 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     String host;
     int port = 4455;
     String? password;
-    
+
     // Формат OBS WebSocket 5.x: obsws://host:port/password
     // Старый формат: obswebsocket|host:port|password
     if (value.startsWith('obsws://')) {
       // Убираем схему
       final withoutScheme = value.substring(8); // убираем "obsws://"
-      
+
       // Разбираем host:port/password
       final slashIndex = withoutScheme.indexOf('/');
       String hostPort;
-      
+
       if (slashIndex != -1) {
         hostPort = withoutScheme.substring(0, slashIndex);
         password = withoutScheme.substring(slashIndex + 1);
@@ -622,7 +626,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       } else {
         hostPort = withoutScheme;
       }
-      
+
       // Разбираем host:port
       final colonIndex = hostPort.lastIndexOf(':');
       if (colonIndex != -1) {
@@ -658,13 +662,14 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       // Только хост
       host = value;
     }
-    
+
     if (host.isEmpty) {
       return null;
     }
-    
-    debugPrint('QR parsed: $host:$port, password: ${password != null ? "SET" : "null"}');
-    
+
+    debugPrint(
+        'QR parsed: $host:$port, password: ${password != null ? "SET" : "null"}');
+
     return OBSConnection(
       id: '', // будет сгенерирован при сохранении
       name: 'OBS ($host)',
@@ -674,5 +679,3 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     );
   }
 }
-
-

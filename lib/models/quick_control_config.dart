@@ -23,12 +23,12 @@ class QuickButtonConfig {
   final int? targetId;
   final String? sceneName;
   final String? groupName;
-  
+
   // НОВЫЕ ПОЛЯ ДЛЯ КАСТОМИЗАЦИИ
   final String? customLabel;
   final String? customIcon;
   final String? customColor;
-  
+
   final int order;
 
   QuickButtonConfig({
@@ -45,17 +45,17 @@ class QuickButtonConfig {
   });
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'type': type.index,
-    'targetName': targetName,
-    'targetId': targetId,
-    'sceneName': sceneName,
-    'groupName': groupName,
-    'customLabel': customLabel,
-    'customIcon': customIcon,
-    'customColor': customColor,
-    'order': order,
-  };
+        'id': id,
+        'type': type.index,
+        'targetName': targetName,
+        'targetId': targetId,
+        'sceneName': sceneName,
+        'groupName': groupName,
+        'customLabel': customLabel,
+        'customIcon': customIcon,
+        'customColor': customColor,
+        'order': order,
+      };
 
   factory QuickButtonConfig.fromJson(Map<String, dynamic> json) {
     return QuickButtonConfig(
@@ -102,7 +102,7 @@ class QuickButtonConfig {
     if (customLabel != null && customLabel!.isNotEmpty) {
       return customLabel!;
     }
-    
+
     switch (type) {
       case QuickButtonType.record:
         return 'Запись';
@@ -128,12 +128,12 @@ class QuickButtonConfig {
         return targetName ?? 'Hotkey';
     }
   }
-  
+
   IconData get icon {
     if (customIcon != null) {
       return _parseIconData(customIcon!);
     }
-    
+
     switch (type) {
       case QuickButtonType.record:
         return Icons.fiber_manual_record;
@@ -159,14 +159,14 @@ class QuickButtonConfig {
         return Icons.keyboard;
     }
   }
-  
+
   Color? get color {
     if (customColor != null) {
       return _parseColor(customColor!);
     }
     return null;
   }
-  
+
   static IconData _parseIconData(String iconName) {
     final iconMap = {
       'videocam': Icons.videocam,
@@ -200,10 +200,10 @@ class QuickButtonConfig {
       'photo_camera': Icons.photo_camera,
       'movie': Icons.movie,
     };
-    
+
     return iconMap[iconName] ?? Icons.help_outline;
   }
-  
+
   static Color _parseColor(String hexColor) {
     try {
       final hex = hexColor.replaceAll('#', '');
@@ -233,13 +233,13 @@ class QuickControlProfile {
         modifiedAt = modifiedAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'buttons': buttons.map((b) => b.toJson()).toList(),
-    'columns': columns,
-    'createdAt': createdAt.toIso8601String(),
-    'modifiedAt': modifiedAt.toIso8601String(),
-  };
+        'id': id,
+        'name': name,
+        'buttons': buttons.map((b) => b.toJson()).toList(),
+        'columns': columns,
+        'createdAt': createdAt.toIso8601String(),
+        'modifiedAt': modifiedAt.toIso8601String(),
+      };
 
   factory QuickControlProfile.fromJson(Map<String, dynamic> json) {
     return QuickControlProfile(
@@ -249,7 +249,7 @@ class QuickControlProfile {
           .map((b) => QuickButtonConfig.fromJson(b as Map<String, dynamic>))
           .toList(),
       columns: json['columns'] as int? ?? 3,
-      createdAt: json['createdAt'] != null 
+      createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : null,
       modifiedAt: json['modifiedAt'] != null
@@ -287,9 +287,9 @@ class QuickControlConfig {
   });
 
   Map<String, dynamic> toJson() => {
-    'buttons': buttons.map((b) => b.toJson()).toList(),
-    'columns': columns,
-  };
+        'buttons': buttons.map((b) => b.toJson()).toList(),
+        'columns': columns,
+      };
 
   factory QuickControlConfig.fromJson(Map<String, dynamic> json) {
     return QuickControlConfig(
@@ -305,6 +305,7 @@ class QuickControlConfig {
   String toJsonString() => jsonEncode(toJson());
 
   static QuickControlConfig fromJsonString(String json) {
-    return QuickControlConfig.fromJson(jsonDecode(json) as Map<String, dynamic>);
+    return QuickControlConfig.fromJson(
+        jsonDecode(json) as Map<String, dynamic>);
   }
 }

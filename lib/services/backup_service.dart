@@ -22,23 +22,25 @@ class BackupData {
   });
 
   Map<String, dynamic> toJson() => {
-    'version': version,
-    'createdAt': createdAt.toIso8601String(),
-    'connections': connections.map((c) => c.toJson()).toList(),
-    'settings': settings,
-    'quickControlConfigs': quickControlConfigs,
-  };
+        'version': version,
+        'createdAt': createdAt.toIso8601String(),
+        'connections': connections.map((c) => c.toJson()).toList(),
+        'settings': settings,
+        'quickControlConfigs': quickControlConfigs,
+      };
 
   factory BackupData.fromJson(Map<String, dynamic> json) {
     return BackupData(
       version: json['version'] as String? ?? '1.0',
       createdAt: DateTime.parse(json['createdAt'] as String),
       connections: (json['connections'] as List?)
-          ?.map((e) => OBSConnection.fromJson(e as Map<String, dynamic>))
-          .toList() ?? [],
+              ?.map((e) => OBSConnection.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
       settings: json['settings'] as Map<String, dynamic>? ?? {},
       quickControlConfigs: (json['quickControlConfigs'] as List?)
-          ?.cast<Map<String, dynamic>>() ?? [],
+              ?.cast<Map<String, dynamic>>() ??
+          [],
     );
   }
 }
@@ -49,7 +51,7 @@ class BackupService {
   static const _connectionsKey = 'obs_connections';
   static const _settingsKey = 'app_settings';
   static const _quickControlKey = 'quick_control_buttons';
-  
+
   final SharedPreferences _prefs;
 
   BackupService(this._prefs);
@@ -63,8 +65,7 @@ class BackupService {
       try {
         final list = json.decode(connectionsJson) as List;
         connections.addAll(
-          list.map((e) => OBSConnection.fromJson(e as Map<String, dynamic>))
-        );
+            list.map((e) => OBSConnection.fromJson(e as Map<String, dynamic>)));
       } catch (e) {
         debugPrint('Error parsing connections: $e');
       }
@@ -72,7 +73,7 @@ class BackupService {
 
     // Получаем настройки
     final settingsJson = _prefs.getString(_settingsKey);
-    final settings = settingsJson != null 
+    final settings = settingsJson != null
         ? json.decode(settingsJson) as Map<String, dynamic>
         : <String, dynamic>{};
 
@@ -100,15 +101,17 @@ class BackupService {
   /// Экспортирует бэкап в файл
   Future<String> exportToFile() async {
     final backup = await createBackup();
-    final jsonString = const JsonEncoder.withIndent('  ').convert(backup.toJson());
-    
+    final jsonString =
+        const JsonEncoder.withIndent('  ').convert(backup.toJson());
+
     final directory = await _getBackupDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final file = File('${directory.path}/obs_controller_backup_$timestamp.json');
-    
+    final file =
+        File('${directory.path}/obs_controller_backup_$timestamp.json');
+
     await file.writeAsString(jsonString);
     debugPrint('Backup exported to: ${file.path}');
-    
+
     return file.path;
   }
 
@@ -124,7 +127,7 @@ class BackupService {
     if (!await file.exists()) {
       throw Exception('Файл не найден: $filePath');
     }
-    
+
     final jsonString = await file.readAsString();
     return importFromString(jsonString);
   }
@@ -140,15 +143,15 @@ class BackupService {
   }
 
   /// Применяет бэкап к текущим настройкам
-  Future<void> restoreBackup(BackupData backup, {
+  Future<void> restoreBackup(
+    BackupData backup, {
     bool restoreConnections = true,
     bool restoreSettings = true,
     bool restoreQuickControl = true,
   }) async {
     if (restoreConnections && backup.connections.isNotEmpty) {
-      final connectionsJson = json.encode(
-        backup.connections.map((c) => c.toJson()).toList()
-      );
+      final connectionsJson =
+          json.encode(backup.connections.map((c) => c.toJson()).toList());
       await _prefs.setString(_connectionsKey, connectionsJson);
       debugPrint('Restored ${backup.connections.length} connections');
     }
@@ -159,8 +162,10 @@ class BackupService {
     }
 
     if (restoreQuickControl && backup.quickControlConfigs.isNotEmpty) {
-      await _prefs.setString(_quickControlKey, json.encode(backup.quickControlConfigs));
-      debugPrint('Restored ${backup.quickControlConfigs.length} quick control configs');
+      await _prefs.setString(
+          _quickControlKey, json.encode(backup.quickControlConfigs));
+      debugPrint(
+          'Restored ${backup.quickControlConfigs.length} quick control configs');
     }
   }
 
@@ -176,10 +181,10 @@ class BackupService {
         .whereType<File>()
         .where((f) => f.path.endsWith('.json'))
         .toList();
-    
+
     // Сортируем по дате (новые первые)
     files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
-    
+
     return files;
   }
 
@@ -194,11 +199,11 @@ class BackupService {
   Future<Directory> _getBackupDirectory() async {
     final baseDir = await getApplicationDocumentsDirectory();
     final backupDir = Directory('${baseDir.path}/OBS_Controller_Backups');
-    
+
     if (!await backupDir.exists()) {
       await backupDir.create(recursive: true);
     }
-    
+
     return backupDir;
   }
 }

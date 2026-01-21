@@ -41,7 +41,7 @@ class ControlPanel extends StatelessWidget {
 
   Widget _buildStreamRow(BuildContext context) {
     final isActive = status.streamStatus.isActive;
-    
+
     return Row(
       children: [
         // Статус
@@ -63,7 +63,7 @@ class ControlPanel extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        
+
         // Текст
         Expanded(
           child: Column(
@@ -84,7 +84,7 @@ class ControlPanel extends StatelessWidget {
             ],
           ),
         ),
-        
+
         // Кнопка
         _ControlButton(
           icon: isActive ? Icons.stop : Icons.play_arrow,
@@ -100,7 +100,7 @@ class ControlPanel extends StatelessWidget {
   Widget _buildRecordRow(BuildContext context) {
     final isActive = status.recordStatus.isActive;
     final isPaused = status.recordStatus.isPaused;
-    
+
     return Row(
       children: [
         // Статус
@@ -124,7 +124,7 @@ class ControlPanel extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        
+
         // Текст
         Expanded(
           child: Column(
@@ -136,7 +136,8 @@ class ControlPanel extends StatelessWidget {
                     : 'Запись остановлена',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: isActive ? (isPaused ? Colors.orange : Colors.red) : null,
+                  color:
+                      isActive ? (isPaused ? Colors.orange : Colors.red) : null,
                 ),
               ),
               if (isActive)
@@ -147,7 +148,7 @@ class ControlPanel extends StatelessWidget {
             ],
           ),
         ),
-        
+
         // Кнопка паузы (только когда запись активна)
         if (isActive) ...[
           _ControlButton(
@@ -159,7 +160,7 @@ class ControlPanel extends StatelessWidget {
           ),
           const SizedBox(width: 8),
         ],
-        
+
         // Кнопка старт/стоп
         _ControlButton(
           icon: isActive ? Icons.stop : Icons.fiber_manual_record,
@@ -246,7 +247,8 @@ class CompactControlPanel extends StatelessWidget {
           children: [
             // Стрим
             _CompactButton(
-              icon: status.streamStatus.isActive ? Icons.stop : Icons.play_arrow,
+              icon:
+                  status.streamStatus.isActive ? Icons.stop : Icons.play_arrow,
               label: status.streamStatus.isActive
                   ? status.streamStatus.durationString
                   : 'Стрим',
@@ -254,7 +256,7 @@ class CompactControlPanel extends StatelessWidget {
               color: Colors.red,
               onPressed: onStreamToggle,
             ),
-            
+
             // Запись
             _CompactButton(
               icon: status.recordStatus.isActive
@@ -268,7 +270,7 @@ class CompactControlPanel extends StatelessWidget {
               color: Colors.red,
               onPressed: onRecordToggle,
             ),
-            
+
             // Пауза записи
             if (status.recordStatus.isActive)
               _CompactButton(

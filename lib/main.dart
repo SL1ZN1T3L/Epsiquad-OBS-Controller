@@ -9,19 +9,20 @@ import 'widgets/shader_warmup.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Включаем максимальную частоту обновления экрана (90Hz, 120Hz и т.д.)
   try {
     await FlutterDisplayMode.setHighRefreshRate();
   } catch (e) {
     debugPrint('Display mode error: $e');
   }
-  
+
   final storage = await StorageService.init();
-  
+
   // Загружаем настройку полноэкранного режима
-  final fullscreenMode = await storage.getSetting<bool>('fullscreenMode', false);
-  
+  final fullscreenMode =
+      await storage.getSetting<bool>('fullscreenMode', false);
+
   // Применяем режим системного UI
   if (fullscreenMode) {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -31,7 +32,7 @@ void main() async {
       overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
     );
   }
-  
+
   // Устанавливаем цвет статус бара
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -40,7 +41,7 @@ void main() async {
       systemNavigationBarColor: Colors.black,
     ),
   );
-  
+
   runApp(
     ChangeNotifierProvider(
       create: (_) => OBSProvider(storage),
@@ -70,4 +71,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-

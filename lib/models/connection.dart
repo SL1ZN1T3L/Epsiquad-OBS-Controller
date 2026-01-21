@@ -1,4 +1,3 @@
-
 class OBSConnection {
   final String id;
   String name;
@@ -69,4 +68,3 @@ class OBSConnection {
   @override
   String toString() => 'OBSConnection($name @ $address)';
 }
-

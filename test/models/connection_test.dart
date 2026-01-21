@@ -172,7 +172,8 @@ void main() {
         port: 4455,
       );
 
-      expect(connection.toString(), 'OBSConnection(My OBS @ 192.168.1.100:4455)');
+      expect(
+          connection.toString(), 'OBSConnection(My OBS @ 192.168.1.100:4455)');
     });
   });
 }

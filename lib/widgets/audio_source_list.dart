@@ -55,12 +55,12 @@ class _AnimatedAudioItem extends StatefulWidget {
   State<_AnimatedAudioItem> createState() => _AnimatedAudioItemState();
 }
 
-class _AnimatedAudioItemState extends State<_AnimatedAudioItem> 
+class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _fadeAnimation;
-  
+
   double _localVolume = 0;
   bool _isDragging = false;
 
@@ -103,7 +103,7 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
   @override
   Widget build(BuildContext context) {
     final source = widget.source;
-    
+
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
@@ -115,8 +115,8 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: source.isMuted 
-                    ? Colors.red.withOpacity(0.3) 
+                color: source.isMuted
+                    ? Colors.red.withOpacity(0.3)
                     : Colors.green.withOpacity(0.2),
                 width: 1,
               ),
@@ -133,8 +133,8 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
                       color: source.isMuted ? Colors.red : Colors.grey,
                     ),
                     child: Text(
-                      source.isMuted 
-                          ? 'Выключен' 
+                      source.isMuted
+                          ? 'Выключен'
                           : 'Громкость: ${(_localVolume * 100).round()}%',
                     ),
                   ),
@@ -157,15 +157,16 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
                 // Слайдер громкости
                 AnimatedCrossFade(
                   duration: const Duration(milliseconds: 200),
-                  crossFadeState: widget.onVolumeChange != null && !source.isMuted
-                      ? CrossFadeState.showFirst
-                      : CrossFadeState.showSecond,
+                  crossFadeState:
+                      widget.onVolumeChange != null && !source.isMuted
+                          ? CrossFadeState.showFirst
+                          : CrossFadeState.showSecond,
                   firstChild: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                     child: Row(
                       children: [
                         Icon(
-                          Icons.volume_down, 
+                          Icons.volume_down,
                           size: 20,
                           color: Colors.grey.shade600,
                         ),
@@ -197,7 +198,7 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
                           ),
                         ),
                         Icon(
-                          Icons.volume_up, 
+                          Icons.volume_up,
                           size: 20,
                           color: Colors.grey.shade600,
                         ),
@@ -206,11 +207,13 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
                           width: 44,
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 6, 
+                              horizontal: 6,
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -240,7 +243,7 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
     final volume = _localVolume;
     IconData icon;
     Color color;
-    
+
     if (source.isMuted) {
       icon = Icons.volume_off;
       color = Colors.red;
@@ -254,7 +257,7 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
       icon = Icons.volume_up;
       color = Colors.green;
     }
-    
+
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 200),
       child: Icon(

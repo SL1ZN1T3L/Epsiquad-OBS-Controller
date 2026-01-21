@@ -6,11 +6,11 @@ import '../models/models.dart';
 class StorageService {
   static const _connectionsKey = 'obs_connections';
   static const _settingsKey = 'app_settings';
-  
+
   final SharedPreferences _prefs;
-  
+
   StorageService(this._prefs);
-  
+
   static Future<StorageService> init() async {
     final prefs = await SharedPreferences.getInstance();
     return StorageService(prefs);
@@ -21,7 +21,7 @@ class StorageService {
   Future<List<OBSConnection>> getConnections() async {
     final data = _prefs.getString(_connectionsKey);
     if (data == null) return [];
-    
+
     try {
       final list = json.decode(data) as List;
       return list
@@ -39,12 +39,12 @@ class StorageService {
 
   Future<OBSConnection> addConnection(OBSConnection connection) async {
     final connections = await getConnections();
-    
+
     // Генерируем ID если нет
     final newConnection = connection.id.isEmpty
         ? connection.copyWith(id: const Uuid().v4())
         : connection;
-    
+
     // Если это первое подключение - делаем его по умолчанию
     if (connections.isEmpty) {
       connections.add(newConnection.copyWith(isDefault: true));
@@ -57,7 +57,7 @@ class StorageService {
       }
       connections.add(newConnection);
     }
-    
+
     await saveConnections(connections);
     return newConnection;
   }
@@ -65,7 +65,7 @@ class StorageService {
   Future<void> updateConnection(OBSConnection connection) async {
     final connections = await getConnections();
     final index = connections.indexWhere((c) => c.id == connection.id);
-    
+
     if (index != -1) {
       // Если это подключение по умолчанию - убираем флаг у других
       if (connection.isDefault) {
@@ -83,12 +83,12 @@ class StorageService {
   Future<void> deleteConnection(String id) async {
     final connections = await getConnections();
     connections.removeWhere((c) => c.id == id);
-    
+
     // Если удалили подключение по умолчанию - делаем первое по умолчанию
     if (connections.isNotEmpty && !connections.any((c) => c.isDefault)) {
       connections[0] = connections[0].copyWith(isDefault: true);
     }
-    
+
     await saveConnections(connections);
   }
 
@@ -104,7 +104,8 @@ class StorageService {
   Future<void> setDefaultConnection(String id) async {
     final connections = await getConnections();
     for (var i = 0; i < connections.length; i++) {
-      connections[i] = connections[i].copyWith(isDefault: connections[i].id == id);
+      connections[i] =
+          connections[i].copyWith(isDefault: connections[i].id == id);
     }
     await saveConnections(connections);
   }
@@ -114,7 +115,7 @@ class StorageService {
   Future<Map<String, dynamic>> getSettings() async {
     final data = _prefs.getString(_settingsKey);
     if (data == null) return _defaultSettings;
-    
+
     try {
       return json.decode(data) as Map<String, dynamic>;
     } catch (e) {

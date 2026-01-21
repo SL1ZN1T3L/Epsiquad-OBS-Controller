@@ -7,39 +7,40 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
 import '../models/models.dart';
 
-typedef EventCallback = void Function(String eventType, Map<String, dynamic> data);
+typedef EventCallback = void Function(
+    String eventType, Map<String, dynamic> data);
 
 class OBSWebSocketService {
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
-  
+
   final _responseCompleters = <String, Completer<Map<String, dynamic>>>{};
   final _eventController = StreamController<Map<String, dynamic>>.broadcast();
-  
+
   bool _isConnected = false;
   bool _isConnecting = false;
-  
+
   EventCallback? onEvent;
   void Function()? onConnected;
   void Function(String reason)? onDisconnected;
   void Function(String error)? onError;
-  
+
   bool get isConnected => _isConnected;
   Stream<Map<String, dynamic>> get eventStream => _eventController.stream;
 
   Future<bool> connect(OBSConnection connection) async {
     if (_isConnecting) return false;
     _isConnecting = true;
-    
+
     debugPrint('OBS WebSocket: Starting connection...');
     try {
       final uri = Uri.parse('ws://${connection.host}:${connection.port}');
       debugPrint('Connecting to $uri');
       _channel = WebSocketChannel.connect(uri);
-      
+
       await _channel!.ready;
       debugPrint('WebSocket ready');
-      
+
       _subscription = _channel!.stream.listen(
         _handleMessage,
         onError: (error) {
@@ -52,20 +53,20 @@ class OBSWebSocketService {
         },
         cancelOnError: false,
       );
-      
+
       final helloCompleter = Completer<Map<String, dynamic>>();
       _responseCompleters['hello'] = helloCompleter;
-      
+
       final hello = await helloCompleter.future.timeout(
         const Duration(seconds: 10),
         onTimeout: () => throw TimeoutException('Connection timeout'),
       );
-      
+
       debugPrint('Received Hello: $hello');
-      
+
       final authRequired = hello['d']?['authentication'] != null;
       String? authString;
-      
+
       if (authRequired && connection.password != null) {
         final auth = hello['d']['authentication'];
         final challenge = auth['challenge'] as String;
@@ -73,10 +74,10 @@ class OBSWebSocketService {
         authString = _generateAuthString(connection.password!, salt, challenge);
         debugPrint('Auth required, generated auth string');
       }
-      
+
       final identifyCompleter = Completer<Map<String, dynamic>>();
       _responseCompleters['identify'] = identifyCompleter;
-      
+
       final identifyMessage = {
         'op': 1,
         'd': {
@@ -85,23 +86,23 @@ class OBSWebSocketService {
           'eventSubscriptions': 207,
         },
       };
-      
+
       debugPrint('Sending Identify: $identifyMessage');
       _channel!.sink.add(json.encode(identifyMessage));
-      
+
       final identifyResponse = await identifyCompleter.future.timeout(
         const Duration(seconds: 10),
         onTimeout: () => throw TimeoutException('Identify timeout'),
       );
-      
+
       debugPrint('Identify response: $identifyResponse');
-      
+
       if (identifyResponse['op'] == 2) {
         _isConnected = true;
         onConnected?.call();
         return true;
       }
-      
+
       throw Exception('Identify failed: $identifyResponse');
     } catch (e) {
       debugPrint('Connection error: $e');
@@ -114,12 +115,12 @@ class OBSWebSocketService {
 
   Future<void> disconnect() async {
     if (!_isConnected && _channel == null && !_isConnecting) return;
-    
+
     debugPrint('OBS WebSocket: Disconnecting...');
-    
+
     _isConnected = false;
     _isConnecting = false;
-    
+
     // Complete all pending requests with error
     for (final completer in _responseCompleters.values) {
       if (!completer.isCompleted) {
@@ -127,11 +128,11 @@ class OBSWebSocketService {
       }
     }
     _responseCompleters.clear();
-    
+
     // Cancel subscription
     await _subscription?.cancel();
     _subscription = null;
-    
+
     // Close channel
     try {
       await _channel?.sink.close(status.normalClosure);
@@ -139,7 +140,7 @@ class OBSWebSocketService {
       debugPrint('Error closing WebSocket: $e');
     }
     _channel = null;
-    
+
     // Wait for OBS to process disconnect
     await Future.delayed(const Duration(milliseconds: 500));
     debugPrint('OBS WebSocket: Disconnected');
@@ -156,9 +157,9 @@ class OBSWebSocketService {
     try {
       final data = json.decode(message as String) as Map<String, dynamic>;
       final op = data['op'] as int;
-      
+
       // debugPrint('Received message op=$op');
-      
+
       switch (op) {
         case 0: // Hello
           _responseCompleters['hello']?.complete(data);
@@ -189,7 +190,7 @@ class OBSWebSocketService {
   void _handleEvent(Map<String, dynamic> data) {
     final eventType = data['d']?['eventType'] as String?;
     final eventData = data['d']?['eventData'] as Map<String, dynamic>? ?? {};
-    
+
     if (eventType != null) {
       _eventController.add({'type': eventType, 'data': eventData});
       onEvent?.call(eventType, eventData);
@@ -215,11 +216,11 @@ class OBSWebSocketService {
     if (_channel == null || !_isConnected) {
       throw Exception('Not connected');
     }
-    
+
     final requestId = _generateRequestId();
     final completer = Completer<Map<String, dynamic>>();
     _responseCompleters[requestId] = completer;
-    
+
     // ПРАВИЛЬНЫЙ ФОРМАТ: requestData должен быть вложенным объектом
     final message = {
       'op': 6,
@@ -229,10 +230,10 @@ class OBSWebSocketService {
         'requestData': requestData ?? {},
       },
     };
-    
+
     // debugPrint('Sending request: $message');
     _channel!.sink.add(json.encode(message));
-    
+
     final response = await completer.future.timeout(
       const Duration(seconds: 15),
       onTimeout: () {
@@ -240,7 +241,7 @@ class OBSWebSocketService {
         throw TimeoutException('Request timeout: $requestType');
       },
     );
-    
+
     // Проверяем успешность
     final requestStatus = response['d']?['requestStatus'];
     if (requestStatus != null && requestStatus['result'] == false) {
@@ -248,14 +249,15 @@ class OBSWebSocketService {
       final comment = requestStatus['comment'] ?? 'Unknown error';
       debugPrint('Request failed: $code - $comment');
     }
-    
+
     return response;
   }
 
   String _generateRequestId() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     final random = Random();
-    return List.generate(16, (index) => chars[random.nextInt(chars.length)]).join();
+    return List.generate(16, (index) => chars[random.nextInt(chars.length)])
+        .join();
   }
 
   // ==================== API методы ====================
@@ -278,9 +280,9 @@ class OBSWebSocketService {
     final scenes = (data['scenes'] as List? ?? []);
     final currentProgram = data['currentProgramSceneName'] as String?;
     final currentPreview = data['currentPreviewSceneName'] as String?;
-    
+
     debugPrint('Scenes: $scenes, current: $currentProgram');
-    
+
     return scenes
         .map((s) => OBSScene.fromJson(
               s as Map<String, dynamic>,
@@ -294,7 +296,8 @@ class OBSWebSocketService {
 
   Future<String?> getCurrentProgramScene() async {
     final response = await _sendRequest('GetCurrentProgramScene', null);
-    return response['d']?['responseData']?['currentProgramSceneName'] as String?;
+    return response['d']?['responseData']?['currentProgramSceneName']
+        as String?;
   }
 
   Future<void> setCurrentProgramScene(String sceneName) async {
@@ -306,7 +309,8 @@ class OBSWebSocketService {
 
   Future<String?> getCurrentPreviewScene() async {
     final response = await _sendRequest('GetCurrentPreviewScene', null);
-    return response['d']?['responseData']?['currentPreviewSceneName'] as String?;
+    return response['d']?['responseData']?['currentPreviewSceneName']
+        as String?;
   }
 
   Future<void> setCurrentPreviewScene(String sceneName) async {
@@ -323,10 +327,13 @@ class OBSWebSocketService {
     });
     final items = response['d']?['responseData']?['sceneItems'] as List? ?? [];
     debugPrint('Scene items for $sceneName: ${items.length}');
-    return items.map((i) => OBSSceneItem.fromJson(i as Map<String, dynamic>)).toList();
+    return items
+        .map((i) => OBSSceneItem.fromJson(i as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<void> setSceneItemEnabled(String sceneName, int sceneItemId, bool enabled) async {
+  Future<void> setSceneItemEnabled(
+      String sceneName, int sceneItemId, bool enabled) async {
     await _sendRequest('SetSceneItemEnabled', {
       'sceneName': sceneName,
       'sceneItemId': sceneItemId,
@@ -339,29 +346,36 @@ class OBSWebSocketService {
   Future<List<OBSAudioSource>> getInputList() async {
     final response = await _sendRequest('GetInputList', null);
     final inputs = response['d']?['responseData']?['inputs'] as List? ?? [];
-    
+
     debugPrint('Inputs: ${inputs.length}');
-    
+
     final audioSources = <OBSAudioSource>[];
     for (final input in inputs) {
       final name = input['inputName'] as String;
       final kind = input['inputKind'] as String? ?? 'unknown';
-      
+
       // Только аудио источники
-      if (kind.contains('wasapi') || 
-          kind.contains('pulse') || 
+      if (kind.contains('wasapi') ||
+          kind.contains('pulse') ||
           kind.contains('coreaudio') ||
           kind.contains('alsa') ||
           kind.contains('jack') ||
           kind.contains('audio')) {
         try {
-          final muteResponse = await _sendRequest('GetInputMute', {'inputName': name});
-          final isMuted = muteResponse['d']?['responseData']?['inputMuted'] as bool? ?? false;
-          
+          final muteResponse =
+              await _sendRequest('GetInputMute', {'inputName': name});
+          final isMuted =
+              muteResponse['d']?['responseData']?['inputMuted'] as bool? ??
+                  false;
+
           // Получаем громкость
-          final volumeResponse = await _sendRequest('GetInputVolume', {'inputName': name});
-          final volumeMul = (volumeResponse['d']?['responseData']?['inputVolumeMul'] as num?)?.toDouble() ?? 1.0;
-          
+          final volumeResponse =
+              await _sendRequest('GetInputVolume', {'inputName': name});
+          final volumeMul =
+              (volumeResponse['d']?['responseData']?['inputVolumeMul'] as num?)
+                      ?.toDouble() ??
+                  1.0;
+
           audioSources.add(OBSAudioSource(
             name: name,
             kind: kind,
@@ -373,7 +387,7 @@ class OBSWebSocketService {
         }
       }
     }
-    
+
     debugPrint('Audio sources: ${audioSources.length}');
     return audioSources;
   }
@@ -501,7 +515,8 @@ class OBSWebSocketService {
 
   Future<bool> getStudioModeEnabled() async {
     final response = await _sendRequest('GetStudioModeEnabled', null);
-    return response['d']?['responseData']?['studioModeEnabled'] as bool? ?? false;
+    return response['d']?['responseData']?['studioModeEnabled'] as bool? ??
+        false;
   }
 
   Future<void> setStudioModeEnabled(bool enabled) async {
@@ -513,7 +528,6 @@ class OBSWebSocketService {
   Future<void> triggerStudioModeTransition() async {
     await _sendRequest('TriggerStudioModeTransition', null);
   }
-
 
   // ==================== Горячие клавиши ====================
 
@@ -545,18 +559,14 @@ class OBSWebSocketService {
       'imageFilePath': imageFilePath,
       if (imageWidth != null) 'imageWidth': imageWidth,
       if (imageHeight != null) 'imageHeight': imageHeight,
-      if (imageCompressionQuality != null) 'imageCompressionQuality': imageCompressionQuality,
+      if (imageCompressionQuality != null)
+        'imageCompressionQuality': imageCompressionQuality,
     });
     return imageFilePath;
   }
+
   void dispose() {
     disconnect();
     _eventController.close();
   }
 }
-
-
-
-
-
-

@@ -72,7 +72,8 @@ class OBSTaskHandler extends TaskHandler {
 }
 
 class ForegroundServiceManager {
-  static final ForegroundServiceManager _instance = ForegroundServiceManager._();
+  static final ForegroundServiceManager _instance =
+      ForegroundServiceManager._();
   factory ForegroundServiceManager() => _instance;
   ForegroundServiceManager._();
 

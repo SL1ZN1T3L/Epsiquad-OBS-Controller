@@ -7,7 +7,7 @@ class ScreenSaverOverlay extends StatefulWidget {
   final String? connectionName;
   final bool isRecording;
   final bool isStreaming;
-  
+
   const ScreenSaverOverlay({
     super.key,
     required this.onTap,
@@ -26,39 +26,39 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
   late AnimationController _pulseController;
   late AnimationController _gradientController;
   late Animation<double> _pulseAnimation;
-  
+
   double _top = 100;
   double _left = 50;
   final _random = Random();
-  
+
   // Плавающие частицы
   final List<_Particle> _particles = [];
 
   @override
   void initState() {
     super.initState();
-    
+
     // Пульсация для индикаторов записи/стрима
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat(reverse: true);
-    
+
     _pulseAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    
+
     // Анимация градиента фона
     _gradientController = AnimationController(
       duration: const Duration(seconds: 10),
       vsync: this,
     )..repeat();
-    
+
     // Инициализация частиц
     for (int i = 0; i < 15; i++) {
       _particles.add(_Particle.random(_random));
     }
-    
+
     _moveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _moveText());
   }
 
@@ -75,7 +75,7 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
     setState(() {
       _top = _random.nextDouble() * (MediaQuery.of(context).size.height - 200);
       _left = _random.nextDouble() * (MediaQuery.of(context).size.width - 280);
-      
+
       // Обновляем частицы
       for (var particle in _particles) {
         particle.update(_random);
@@ -111,7 +111,7 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
           children: [
             // Плавающие частицы
             ..._particles.map((particle) => _buildParticle(particle)),
-            
+
             // Основной контент
             AnimatedPositioned(
               duration: const Duration(seconds: 3),
@@ -120,14 +120,14 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
               left: _left,
               child: _buildContent(),
             ),
-            
+
             // Время в углу
             Positioned(
               bottom: 30,
               right: 30,
               child: _buildClock(),
             ),
-            
+
             // Дата слева внизу
             Positioned(
               bottom: 30,
@@ -142,16 +142,28 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
 
   Color _getAnimatedColor(int index) {
     final baseColors = [
-      [const Color(0xFF0D1117), const Color(0xFF161B22), const Color(0xFF1A1F25)],
-      [const Color(0xFF161B22), const Color(0xFF1A1F25), const Color(0xFF0D1117)],
-      [const Color(0xFF1A1F25), const Color(0xFF0D1117), const Color(0xFF161B22)],
+      [
+        const Color(0xFF0D1117),
+        const Color(0xFF161B22),
+        const Color(0xFF1A1F25)
+      ],
+      [
+        const Color(0xFF161B22),
+        const Color(0xFF1A1F25),
+        const Color(0xFF0D1117)
+      ],
+      [
+        const Color(0xFF1A1F25),
+        const Color(0xFF0D1117),
+        const Color(0xFF161B22)
+      ],
     ];
-    
+
     final t = _gradientController.value;
     final fromIndex = (t * 3).floor() % 3;
     final toIndex = (fromIndex + 1) % 3;
     final localT = (t * 3) % 1;
-    
+
     return Color.lerp(
       baseColors[fromIndex][index],
       baseColors[toIndex][index],
@@ -223,7 +235,8 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
                     ],
                   ),
                 ),
-                child: const Icon(Icons.videocam_rounded, color: Colors.white70, size: 28),
+                child: const Icon(Icons.videocam_rounded,
+                    color: Colors.white70, size: 28),
               ),
               const SizedBox(width: 16),
               Column(
@@ -251,28 +264,28 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
               ),
             ],
           ),
-          
           if (widget.isRecording || widget.isStreaming) ...[
             const SizedBox(height: 20),
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (widget.isRecording) _buildStatusBadge(
-                  icon: Icons.fiber_manual_record,
-                  label: 'REC',
-                  color: Colors.red,
-                ),
-                if (widget.isRecording && widget.isStreaming) 
+                if (widget.isRecording)
+                  _buildStatusBadge(
+                    icon: Icons.fiber_manual_record,
+                    label: 'REC',
+                    color: Colors.red,
+                  ),
+                if (widget.isRecording && widget.isStreaming)
                   const SizedBox(width: 12),
-                if (widget.isStreaming) _buildStatusBadge(
-                  icon: Icons.stream,
-                  label: 'LIVE',
-                  color: Colors.red,
-                ),
+                if (widget.isStreaming)
+                  _buildStatusBadge(
+                    icon: Icons.stream,
+                    label: 'LIVE',
+                    color: Colors.red,
+                  ),
               ],
             ),
           ],
-          
           const SizedBox(height: 20),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -378,14 +391,29 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
   Widget _buildDate() {
     final now = DateTime.now();
     final months = [
-      'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
+      'января',
+      'февраля',
+      'марта',
+      'апреля',
+      'мая',
+      'июня',
+      'июля',
+      'августа',
+      'сентября',
+      'октября',
+      'ноября',
+      'декабря'
     ];
     final weekdays = [
-      'Понедельник', 'Вторник', 'Среда', 'Четверг', 
-      'Пятница', 'Суббота', 'Воскресенье'
+      'Понедельник',
+      'Вторник',
+      'Среда',
+      'Четверг',
+      'Пятница',
+      'Суббота',
+      'Воскресенье'
     ];
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -433,7 +461,7 @@ class _Particle {
       Colors.teal,
       Colors.indigo,
     ];
-    
+
     return _Particle(
       x: random.nextDouble(),
       y: random.nextDouble(),

@@ -63,12 +63,12 @@ class _AnimatedSceneCard extends StatefulWidget {
   State<_AnimatedSceneCard> createState() => _AnimatedSceneCardState();
 }
 
-class _AnimatedSceneCardState extends State<_AnimatedSceneCard> 
+class _AnimatedSceneCardState extends State<_AnimatedSceneCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
-  
+
   bool _isPressed = false;
 
   @override
@@ -96,7 +96,7 @@ class _AnimatedSceneCardState extends State<_AnimatedSceneCard>
   @override
   Widget build(BuildContext context) {
     final isActive = widget.scene.isCurrentProgram;
-    
+
     return FadeTransition(
       opacity: _fadeAnimation,
       child: ScaleTransition(
@@ -114,11 +114,13 @@ class _AnimatedSceneCardState extends State<_AnimatedSceneCard>
               curve: Curves.easeOutCubic,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                color: isActive ? Colors.red.shade700 : Theme.of(context).cardColor,
+                color: isActive
+                    ? Colors.red.shade700
+                    : Theme.of(context).cardColor,
                 boxShadow: [
                   BoxShadow(
-                    color: isActive 
-                        ? Colors.red.withOpacity(0.4) 
+                    color: isActive
+                        ? Colors.red.withOpacity(0.4)
                         : Colors.black.withOpacity(0.2),
                     blurRadius: isActive ? 12 : 4,
                     spreadRadius: isActive ? 2 : 0,
@@ -147,7 +149,8 @@ class _AnimatedSceneCardState extends State<_AnimatedSceneCard>
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                        fontWeight:
+                            isActive ? FontWeight.bold : FontWeight.normal,
                         color: isActive ? Colors.white : null,
                       ),
                     ),

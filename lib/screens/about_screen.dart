@@ -53,12 +53,14 @@ class _AboutScreenState extends State<AboutScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            _version.isEmpty ? 'Загрузка...' : 'Версия $_version ($_buildNumber)',
+            _version.isEmpty
+                ? 'Загрузка...'
+                : 'Версия $_version ($_buildNumber)',
             textAlign: TextAlign.center,
             style: const TextStyle(color: Colors.grey),
           ),
           const SizedBox(height: 32),
-          
+
           // Описание
           const Card(
             child: Padding(
@@ -83,9 +85,9 @@ class _AboutScreenState extends State<AboutScreen> {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Создатели
           const Text(
             'Создатели',
@@ -95,16 +97,16 @@ class _AboutScreenState extends State<AboutScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          
+
           _buildCreatorCard(
             context,
             name: 'Epsiquad',
             role: 'Разработка и дизайн',
             icon: Icons.code,
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Функции
           const Text(
             'Основные возможности',
@@ -114,7 +116,7 @@ class _AboutScreenState extends State<AboutScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          
+
           _buildFeatureItem(Icons.tv, 'Переключение сцен'),
           _buildFeatureItem(Icons.fiber_manual_record, 'Запись с паузой'),
           _buildFeatureItem(Icons.stream, 'Управление стримом'),
@@ -124,12 +126,13 @@ class _AboutScreenState extends State<AboutScreen> {
           _buildFeatureItem(Icons.replay, 'Replay Buffer'),
           _buildFeatureItem(Icons.videocam, 'Виртуальная камера'),
           _buildFeatureItem(Icons.keyboard, 'Горячие клавиши'),
-          _buildFeatureItem(Icons.dashboard_customize, 'Кастомизация интерфейса'),
+          _buildFeatureItem(
+              Icons.dashboard_customize, 'Кастомизация интерфейса'),
           _buildFeatureItem(Icons.palette, 'Настройка цветов и иконок'),
           _buildFeatureItem(Icons.account_tree, 'Профили управления'),
-          
+
           const SizedBox(height: 24),
-          
+
           // Технологии
           Card(
             child: Padding(
@@ -153,22 +156,23 @@ class _AboutScreenState extends State<AboutScreen> {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // GitHub
           Card(
             child: ListTile(
               leading: const Icon(Icons.code),
               title: const Text('Open Source'),
-              subtitle: const Text('github.com/SL1ZN1T3L/Epsiquad-OBS-Controller'),
+              subtitle:
+                  const Text('github.com/SL1ZN1T3L/Epsiquad-OBS-Controller'),
               trailing: const Icon(Icons.open_in_new),
               onTap: () => _openGitHub(),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Лицензия
           const Text(
             '© 2026 Epsiquad & Claude\nGPL 2.0 License',
@@ -178,7 +182,7 @@ class _AboutScreenState extends State<AboutScreen> {
               fontSize: 12,
             ),
           ),
-          
+
           const SizedBox(height: 32),
         ],
       ),
@@ -238,10 +242,10 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   static Future<void> _openGitHub() async {
-    final uri = Uri.parse('https://github.com/SL1ZN1T3L/Epsiquad-OBS-Controller');
+    final uri =
+        Uri.parse('https://github.com/SL1ZN1T3L/Epsiquad-OBS-Controller');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 }
-

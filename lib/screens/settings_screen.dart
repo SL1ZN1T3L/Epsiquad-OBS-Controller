@@ -49,7 +49,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Настройки'),
@@ -60,25 +60,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // Секция бэкапов
           _buildSectionHeader('Резервное копирование'),
           const SizedBox(height: 8),
-          
+
           _AnimatedCard(
             child: ListTile(
               leading: const Icon(Icons.upload_file, color: Colors.blue),
               title: const Text('Экспорт настроек'),
               subtitle: const Text('Сохранить в файл'),
-              trailing: _isLoading 
+              trailing: _isLoading
                   ? const SizedBox(
-                      width: 24, 
-                      height: 24, 
-                      child: CircularProgressIndicator(strokeWidth: 2)
-                    )
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.chevron_right),
               onTap: _isLoading ? null : _exportBackup,
             ),
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           _AnimatedCard(
             child: ListTile(
               leading: const Icon(Icons.share, color: Colors.green),
@@ -88,9 +87,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _isLoading ? null : _shareBackup,
             ),
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           _AnimatedCard(
             child: ListTile(
               leading: const Icon(Icons.download, color: Colors.orange),
@@ -100,9 +99,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _isLoading ? null : _importBackup,
             ),
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           _AnimatedCard(
             child: ListTile(
               leading: const Icon(Icons.content_paste, color: Colors.purple),
@@ -112,21 +111,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _isLoading ? null : _importFromClipboard,
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Секция скринсейвера
           _buildSectionHeader('Скринсейвер'),
           const SizedBox(height: 8),
-          
+
           _ScreenSaverSettingsCard(),
-          
+
           const SizedBox(height: 24),
-          
+
           // Секция файлов бэкапов
           _buildSectionHeader('Сохранённые бэкапы'),
           const SizedBox(height: 8),
-          
+
           FutureBuilder<List<File>>(
             future: _backupService!.getBackupFiles(),
             builder: (context, snapshot) {
@@ -139,17 +138,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 );
               }
-              
+
               return Column(
                 children: snapshot.data!.map((file) {
                   final fileName = file.path.split('/').last;
                   final date = file.lastModifiedSync();
-                  
+
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: _AnimatedCard(
                       child: ListTile(
-                        leading: const Icon(Icons.description, color: Colors.blue),
+                        leading:
+                            const Icon(Icons.description, color: Colors.blue),
                         title: Text(
                           fileName,
                           maxLines: 1,
@@ -183,9 +183,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               value: 'delete',
                               child: Row(
                                 children: [
-                                  Icon(Icons.delete, size: 20, color: Colors.red),
+                                  Icon(Icons.delete,
+                                      size: 20, color: Colors.red),
                                   SizedBox(width: 8),
-                                  Text('Удалить', style: TextStyle(color: Colors.red)),
+                                  Text('Удалить',
+                                      style: TextStyle(color: Colors.red)),
                                 ],
                               ),
                             ),
@@ -198,9 +200,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Информация о бэкапе
           const _AnimatedCard(
             child: Padding(
@@ -221,7 +223,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   SizedBox(height: 12),
                   _InfoRow(icon: Icons.link, text: 'Подключения к OBS'),
                   _InfoRow(icon: Icons.settings, text: 'Настройки приложения'),
-                  _InfoRow(icon: Icons.grid_view, text: 'Конфигурация Quick Control'),
+                  _InfoRow(
+                      icon: Icons.grid_view,
+                      text: 'Конфигурация Quick Control'),
                 ],
               ),
             ),
@@ -247,15 +251,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String _formatDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}.'
-           '${date.month.toString().padLeft(2, '0')}.'
-           '${date.year} '
-           '${date.hour.toString().padLeft(2, '0')}:'
-           '${date.minute.toString().padLeft(2, '0')}';
+        '${date.month.toString().padLeft(2, '0')}.'
+        '${date.year} '
+        '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
   }
 
   Future<void> _exportBackup() async {
     setState(() => _isLoading = true);
-    
+
     try {
       final path = await _backupService!.exportToFile();
       if (mounted) {
@@ -275,7 +279,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _shareBackup() async {
     setState(() => _isLoading = true);
-    
+
     try {
       final jsonString = await _backupService!.exportToString();
       await Share.share(
@@ -299,7 +303,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         type: FileType.custom,
         allowedExtensions: ['json'],
       );
-      
+
       if (result != null && result.files.single.path != null) {
         await _restoreFromFile(result.files.single.path!);
       }
@@ -317,8 +321,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _showError('Буфер обмена пуст');
         return;
       }
-      
-      final backup = await _backupService!.importFromString(clipboardData.text!);
+
+      final backup =
+          await _backupService!.importFromString(clipboardData.text!);
       await _showRestoreDialog(backup);
     } catch (e) {
       if (mounted) {
@@ -372,9 +377,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 contentPadding: EdgeInsets.zero,
               ),
               CheckboxListTile(
-                title: Text('Quick Control (${backup.quickControlConfigs.length})'),
+                title: Text(
+                    'Quick Control (${backup.quickControlConfigs.length})'),
                 value: restoreQuickControl,
-                onChanged: (v) => setDialogState(() => restoreQuickControl = v!),
+                onChanged: (v) =>
+                    setDialogState(() => restoreQuickControl = v!),
                 dense: true,
                 contentPadding: EdgeInsets.zero,
               ),
@@ -407,11 +414,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           restoreSettings: restoreSettings,
           restoreQuickControl: restoreQuickControl,
         );
-        
+
         // Перезагружаем данные провайдера
         if (mounted) {
           await context.read<OBSProvider>().loadConnections();
-          _showSuccess('Настройки восстановлены!\nПерезапустите приложение для полного применения.');
+          _showSuccess(
+              'Настройки восстановлены!\nПерезапустите приложение для полного применения.');
         }
       } catch (e) {
         if (mounted) {
@@ -481,7 +489,7 @@ class _AnimatedCard extends StatefulWidget {
   State<_AnimatedCard> createState() => _AnimatedCardState();
 }
 
-class _AnimatedCardState extends State<_AnimatedCard> 
+class _AnimatedCardState extends State<_AnimatedCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
@@ -552,7 +560,8 @@ class _InfoRow extends StatelessWidget {
 
 class _ScreenSaverSettingsCard extends StatefulWidget {
   @override
-  State<_ScreenSaverSettingsCard> createState() => _ScreenSaverSettingsCardState();
+  State<_ScreenSaverSettingsCard> createState() =>
+      _ScreenSaverSettingsCardState();
 }
 
 class _ScreenSaverSettingsCardState extends State<_ScreenSaverSettingsCard> {
@@ -586,7 +595,7 @@ class _ScreenSaverSettingsCardState extends State<_ScreenSaverSettingsCard> {
   Future<void> _saveFullscreen(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     Map<String, dynamic> settings = {};
-    
+
     final settingsJson = prefs.getString('app_settings');
     if (settingsJson != null) {
       try {
@@ -595,10 +604,10 @@ class _ScreenSaverSettingsCardState extends State<_ScreenSaverSettingsCard> {
         // ignore
       }
     }
-    
+
     settings['fullscreenMode'] = value;
     await prefs.setString('app_settings', jsonEncode(settings));
-    
+
     // Применяем режим сразу
     if (value) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -608,7 +617,7 @@ class _ScreenSaverSettingsCardState extends State<_ScreenSaverSettingsCard> {
         overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
       );
     }
-    
+
     setState(() {
       _fullscreen = value;
     });

@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Рендерит основные UI элементы невидимо, чтобы скомпилировать шейдеры
 class ShaderWarmup extends StatefulWidget {
   final Widget child;
-  
+
   const ShaderWarmup({super.key, required this.child});
 
   @override
@@ -15,30 +15,30 @@ class ShaderWarmup extends StatefulWidget {
 class _ShaderWarmupState extends State<ShaderWarmup> {
   bool _isWarmedUp = false;
   bool _showWarmup = false;
-  
+
   @override
   void initState() {
     super.initState();
     _checkWarmup();
   }
-  
+
   Future<void> _checkWarmup() async {
     final prefs = await SharedPreferences.getInstance();
     final warmedUp = prefs.getBool('shaderWarmedUp') ?? false;
-    
+
     if (warmedUp) {
       // Уже прогрето ранее
       setState(() => _isWarmedUp = true);
     } else {
       // Нужен прогрев
       setState(() => _showWarmup = true);
-      
+
       // Даём время на рендер warmup виджетов
       await Future.delayed(const Duration(milliseconds: 500));
-      
+
       // Отмечаем как прогретое
       await prefs.setBool('shaderWarmedUp', true);
-      
+
       setState(() {
         _showWarmup = false;
         _isWarmedUp = true;
@@ -76,7 +76,7 @@ class _ShaderWarmupState extends State<ShaderWarmup> {
                 ],
               ),
             ),
-            
+
             // Невидимый слой с виджетами для прогрева шейдеров
             if (_showWarmup)
               Opacity(
@@ -89,7 +89,7 @@ class _ShaderWarmupState extends State<ShaderWarmup> {
         ),
       );
     }
-    
+
     return widget.child;
   }
 }
@@ -107,7 +107,7 @@ class _WarmupWidgets extends StatelessWidget {
           OutlinedButton(onPressed: () {}, child: const Text('Outlined')),
           IconButton(onPressed: () {}, icon: const Icon(Icons.add)),
           FloatingActionButton(onPressed: () {}, child: const Icon(Icons.add)),
-          
+
           // Карточки
           Card(
             child: ListTile(
@@ -117,14 +117,14 @@ class _WarmupWidgets extends StatelessWidget {
               trailing: Switch(value: true, onChanged: (_) {}),
             ),
           ),
-          
+
           // Слайдер
           Slider(value: 0.5, onChanged: (_) {}),
-          
+
           // Прогресс
           const CircularProgressIndicator(),
           const LinearProgressIndicator(),
-          
+
           // Табы
           DefaultTabController(
             length: 3,
@@ -151,17 +151,18 @@ class _WarmupWidgets extends StatelessWidget {
               ],
             ),
           ),
-          
+
           // Чипы
           const Chip(label: Text('Chip')),
-          const FilterChip(label: Text('Filter'), selected: true, onSelected: null),
-          
+          const FilterChip(
+              label: Text('Filter'), selected: true, onSelected: null),
+
           // Диалог элементы
           const AlertDialog(
             title: Text('Title'),
             content: Text('Content'),
           ),
-          
+
           // Контейнеры с градиентами
           Container(
             width: 100,
@@ -179,7 +180,7 @@ class _WarmupWidgets extends StatelessWidget {
               ],
             ),
           ),
-          
+
           // Иконки
           const Row(
             mainAxisSize: MainAxisSize.min,
@@ -192,15 +193,17 @@ class _WarmupWidgets extends StatelessWidget {
               Icon(Icons.visibility_off, size: 48),
             ],
           ),
-          
+
           // Grid
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: 3,
-            children: List.generate(9, (i) => Card(
-              child: Center(child: Text('$i')),
-            )),
+            children: List.generate(
+                9,
+                (i) => Card(
+                      child: Center(child: Text('$i')),
+                    )),
           ),
         ],
       ),

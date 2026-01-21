@@ -23,7 +23,7 @@ class SceneItemList extends StatelessWidget {
       itemCount: items.length,
       itemBuilder: (context, index) {
         final item = items[index];
-        
+
         return _AnimatedSourceItem(
           key: ValueKey('${item.sourceName}_${item.sceneItemId}'),
           item: item,
@@ -51,7 +51,7 @@ class _AnimatedSourceItem extends StatefulWidget {
   State<_AnimatedSourceItem> createState() => _AnimatedSourceItemState();
 }
 
-class _AnimatedSourceItemState extends State<_AnimatedSourceItem> 
+class _AnimatedSourceItemState extends State<_AnimatedSourceItem>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<Offset> _slideAnimation;
@@ -96,8 +96,8 @@ class _AnimatedSourceItemState extends State<_AnimatedSourceItem>
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: widget.item.isVisible 
-                    ? Colors.green.withOpacity(0.3) 
+                color: widget.item.isVisible
+                    ? Colors.green.withOpacity(0.3)
                     : Colors.transparent,
                 width: 1,
               ),
@@ -110,7 +110,9 @@ class _AnimatedSourceItemState extends State<_AnimatedSourceItem>
                   child: child,
                 ),
                 child: Icon(
-                  widget.item.isVisible ? Icons.visibility : Icons.visibility_off,
+                  widget.item.isVisible
+                      ? Icons.visibility
+                      : Icons.visibility_off,
                   key: ValueKey(widget.item.isVisible),
                   color: widget.item.isVisible ? Colors.green : Colors.grey,
                 ),

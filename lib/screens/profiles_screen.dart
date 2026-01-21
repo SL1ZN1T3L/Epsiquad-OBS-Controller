@@ -24,7 +24,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
   Future<void> _loadProfiles() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     // Загружаем профили
     final profilesJson = prefs.getString('quickControlProfiles');
     if (profilesJson != null) {
@@ -37,10 +37,10 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         _profiles = [];
       }
     }
-    
+
     // Загружаем активный профиль
     _activeProfileId = prefs.getString('activeProfileId');
-    
+
     setState(() => _isLoading = false);
   }
 
@@ -53,7 +53,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
   Future<void> _setActiveProfile(String profileId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('activeProfileId', profileId);
-    
+
     // Загружаем конфигурацию профиля в основную конфигурацию
     final profile = _profiles.firstWhere((p) => p.id == profileId);
     final config = QuickControlConfig(
@@ -61,9 +61,9 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
       columns: profile.columns,
     );
     await prefs.setString('quickControlConfig', config.toJsonString());
-    
+
     setState(() => _activeProfileId = profileId);
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Профиль "${profile.name}" активирован')),
@@ -73,7 +73,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
   Future<void> _createProfile() async {
     final controller = TextEditingController();
-    
+
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -98,14 +98,14 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         ],
       ),
     );
-    
+
     if (name != null && name.isNotEmpty) {
       final profile = QuickControlProfile(
         id: const Uuid().v4(),
         name: name,
         buttons: [],
       );
-      
+
       setState(() => _profiles.add(profile));
       await _saveProfiles();
     }
@@ -114,16 +114,17 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
   Future<void> _saveCurrentAsProfile() async {
     final prefs = await SharedPreferences.getInstance();
     final configJson = prefs.getString('quickControlConfig');
-    
+
     if (configJson == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Нет текущей конфигурации для сохранения')),
+        const SnackBar(
+            content: Text('Нет текущей конфигурации для сохранения')),
       );
       return;
     }
-    
+
     final controller = TextEditingController();
-    
+
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -148,7 +149,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         ],
       ),
     );
-    
+
     if (name != null && name.isNotEmpty) {
       final config = QuickControlConfig.fromJsonString(configJson);
       final profile = QuickControlProfile(
@@ -157,10 +158,10 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         buttons: config.buttons,
         columns: config.columns,
       );
-      
+
       setState(() => _profiles.add(profile));
       await _saveProfiles();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Профиль "$name" сохранён')),
@@ -174,7 +175,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Удалить профиль?'),
-        content: Text('Вы уверены, что хотите удалить профиль "${profile.name}"?'),
+        content:
+            Text('Вы уверены, что хотите удалить профиль "${profile.name}"?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -188,11 +190,11 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         ],
       ),
     );
-    
+
     if (confirm == true) {
       setState(() => _profiles.removeWhere((p) => p.id == profile.id));
       await _saveProfiles();
-      
+
       if (_activeProfileId == profile.id) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('activeProfileId');
@@ -203,7 +205,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
   Future<void> _renameProfile(QuickControlProfile profile) async {
     final controller = TextEditingController(text: profile.name);
-    
+
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -227,7 +229,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         ],
       ),
     );
-    
+
     if (name != null && name.isNotEmpty) {
       final index = _profiles.indexWhere((p) => p.id == profile.id);
       if (index != -1) {
@@ -280,7 +282,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                   itemBuilder: (context, index) {
                     final profile = _profiles[index];
                     final isActive = profile.id == _activeProfileId;
-                    
+
                     return Card(
                       elevation: isActive ? 4 : 1,
                       color: isActive ? Colors.blue.withOpacity(0.1) : null,
@@ -351,9 +353,11 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
                               ),
                               child: const Row(
                                 children: [
-                                  Icon(Icons.delete, size: 20, color: Colors.red),
+                                  Icon(Icons.delete,
+                                      size: 20, color: Colors.red),
                                   SizedBox(width: 8),
-                                  Text('Удалить', style: TextStyle(color: Colors.red)),
+                                  Text('Удалить',
+                                      style: TextStyle(color: Colors.red)),
                                 ],
                               ),
                             ),
@@ -375,7 +379,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final diff = now.difference(date);
-    
+
     if (diff.inDays == 0) return 'Сегодня';
     if (diff.inDays == 1) return 'Вчера';
     if (diff.inDays < 7) return '${diff.inDays} дн. назад';

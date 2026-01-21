@@ -12,7 +12,8 @@ class OBSScene {
     this.isCurrentPreview = false,
   });
 
-  factory OBSScene.fromJson(Map<String, dynamic> json, {
+  factory OBSScene.fromJson(
+    Map<String, dynamic> json, {
     String? currentProgram,
     String? currentPreview,
   }) {

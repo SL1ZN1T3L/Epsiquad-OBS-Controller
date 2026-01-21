@@ -14,7 +14,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   @override
@@ -102,7 +103,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       heroTag: 'settings',
                       onPressed: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                        MaterialPageRoute(
+                            builder: (_) => const SettingsScreen()),
                       ),
                       tooltip: 'Настройки',
                       child: const Icon(Icons.settings),
@@ -122,7 +124,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       heroTag: 'quick',
                       onPressed: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const QuickControlScreen()),
+                        MaterialPageRoute(
+                            builder: (_) => const QuickControlScreen()),
                       ),
                       tooltip: 'Быстрое управление',
                       child: const Icon(Icons.grid_view),
@@ -159,8 +162,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
 
     // Используем выбранную сцену из провайдера или текущую активную
-    final selectedName = provider.selectedSceneForItems ?? 
-        provider.scenes.firstWhere((s) => s.isCurrentProgram, orElse: () => provider.scenes.first).name;
+    final selectedName = provider.selectedSceneForItems ??
+        provider.scenes
+            .firstWhere((s) => s.isCurrentProgram,
+                orElse: () => provider.scenes.first)
+            .name;
 
     return Column(
       children: [
@@ -171,8 +177,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             initialValue: selectedName,
             decoration: InputDecoration(
               labelText: 'Сцена',
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               isDense: true,
             ),
             items: provider.scenes.map((scene) {
@@ -184,7 +192,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     if (scene.isCurrentProgram)
                       const Padding(
                         padding: EdgeInsets.only(right: 8),
-                        child: Icon(Icons.play_circle, size: 16, color: Colors.green),
+                        child: Icon(Icons.play_circle,
+                            size: 16, color: Colors.green),
                       ),
                     Flexible(
                       child: Text(
@@ -222,7 +231,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return AudioSourceList(
       sources: provider.audioSources,
       onMuteToggle: (source) => provider.toggleAudioMute(source.name),
-      onVolumeChange: (source, volume) => provider.setAudioVolume(source.name, volume),
+      onVolumeChange: (source, volume) =>
+          provider.setAudioVolume(source.name, volume),
     );
   }
 
@@ -234,4 +244,3 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 }
-

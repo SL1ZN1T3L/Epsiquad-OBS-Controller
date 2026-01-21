@@ -17,7 +17,8 @@ class QuickControlScreen extends StatefulWidget {
   State<QuickControlScreen> createState() => _QuickControlScreenState();
 }
 
-class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBindingObserver {
+class _QuickControlScreenState extends State<QuickControlScreen>
+    with WidgetsBindingObserver {
   QuickControlConfig _config = QuickControlConfig.empty();
   bool _isEditMode = false;
   bool _isLoading = true;
@@ -48,7 +49,7 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
     setState(() {
       _isInForeground = state == AppLifecycleState.resumed;
     });
-    
+
     if (_isInForeground) {
       WakelockPlus.enable();
       _resetInactivityTimer();
@@ -64,7 +65,7 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
     if (_showScreenSaver) {
       setState(() => _showScreenSaver = false);
     }
-    
+
     _inactivityTimer = Timer(_inactivityDuration, () {
       if (_isInForeground && mounted) {
         setState(() => _showScreenSaver = true);
@@ -173,7 +174,8 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
         children: [
           Scaffold(
             appBar: AppBar(
-              title: Text(_isEditMode ? 'Редактирование' : 'Быстрое управление'),
+              title:
+                  Text(_isEditMode ? 'Редактирование' : 'Быстрое управление'),
               actions: [
                 IconButton(
                   icon: const Icon(Icons.account_tree),
@@ -226,7 +228,8 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
                                   size: 64, color: Colors.grey),
                               SizedBox(height: 16),
                               Text('Нет кнопок',
-                                  style: TextStyle(fontSize: 18, color: Colors.grey)),
+                                  style: TextStyle(
+                                      fontSize: 18, color: Colors.grey)),
                               SizedBox(height: 8),
                               Text('Нажмите + чтобы добавить',
                                   style: TextStyle(color: Colors.grey)),
@@ -377,10 +380,11 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
             leading: button.type == QuickButtonType.separator
                 ? const Icon(Icons.horizontal_rule, color: Colors.grey)
                 : Icon(button.icon, color: button.color),
-            title: Text(button.type == QuickButtonType.separator 
+            title: Text(button.type == QuickButtonType.separator
                 ? '── ${button.groupName ?? "Разделитель"} ──'
                 : button.displayName),
-            subtitle: button.groupName != null && button.type != QuickButtonType.separator
+            subtitle: button.groupName != null &&
+                    button.type != QuickButtonType.separator
                 ? Text('Группа: ${button.groupName}')
                 : null,
             trailing: Row(
@@ -456,7 +460,8 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
       case QuickButtonType.record:
         isActive = provider.status.recordStatus.isActive;
         isPaused = provider.status.recordStatus.isPaused;
-        sublabel = isActive ? provider.status.recordStatus.durationString : null;
+        sublabel =
+            isActive ? provider.status.recordStatus.durationString : null;
         activeColor = config.color ?? Colors.red;
         onTap = provider.toggleRecord;
         onLongPress = provider.toggleRecordPause;
@@ -464,7 +469,8 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
 
       case QuickButtonType.stream:
         isActive = provider.status.streamStatus.isActive;
-        sublabel = isActive ? provider.status.streamStatus.durationString : null;
+        sublabel =
+            isActive ? provider.status.streamStatus.durationString : null;
         activeColor = config.color ?? Colors.red;
         onTap = provider.toggleStream;
         break;
@@ -472,9 +478,9 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
       case QuickButtonType.scene:
         if (config.targetName != null) {
           final scene = provider.scenes.cast<OBSScene?>().firstWhere(
-            (s) => s?.name == config.targetName,
-            orElse: () => null,
-          );
+                (s) => s?.name == config.targetName,
+                orElse: () => null,
+              );
           isActive = scene?.isCurrentProgram ?? false;
           onTap = () => provider.switchScene(config.targetName!);
         }
@@ -482,10 +488,11 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
 
       case QuickButtonType.audioMute:
         if (config.targetName != null) {
-          final source = provider.audioSources.cast<OBSAudioSource?>().firstWhere(
-            (s) => s?.name == config.targetName,
-            orElse: () => null,
-          );
+          final source =
+              provider.audioSources.cast<OBSAudioSource?>().firstWhere(
+                    (s) => s?.name == config.targetName,
+                    orElse: () => null,
+                  );
           isActive = !(source?.isMuted ?? true);
           activeColor = config.color ?? Colors.orange;
           onTap = () => provider.toggleAudioMute(config.targetName!);
@@ -495,13 +502,15 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
       case QuickButtonType.sceneItem:
         if (config.sceneName != null && config.targetId != null) {
           // Используем кэш всех сцен для получения актуального состояния
-          isActive = provider.getSceneItemEnabled(config.sceneName!, config.targetId!) ?? false;
+          isActive = provider.getSceneItemEnabled(
+                  config.sceneName!, config.targetId!) ??
+              false;
           activeColor = config.color ?? Colors.green;
           onTap = () => provider.toggleSceneItem(
-            config.sceneName!,
-            config.targetId!,
-            !isActive,
-          );
+                config.sceneName!,
+                config.targetId!,
+                !isActive,
+              );
         }
         break;
 
@@ -522,7 +531,8 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
         activeColor = config.color ?? Colors.blue;
         onTap = () async {
           HapticFeedback.mediumImpact();
-          final path = await provider.saveScreenshot(sourceName: config.targetName);
+          final path =
+              await provider.saveScreenshot(sourceName: config.targetName);
           if (mounted && path != null) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Скриншот сохранён: $path')),
@@ -585,9 +595,11 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
   }
 
   void _showCustomizeDialog(QuickButtonConfig button) {
-    final labelController = TextEditingController(text: button.customLabel ?? '');
+    final labelController =
+        TextEditingController(text: button.customLabel ?? '');
     final iconController = TextEditingController(text: button.customIcon ?? '');
-    final colorController = TextEditingController(text: button.customColor ?? '');
+    final colorController =
+        TextEditingController(text: button.customColor ?? '');
 
     showDialog(
       context: context,
@@ -646,9 +658,12 @@ class _QuickControlScreenState extends State<QuickControlScreen> with WidgetsBin
           ElevatedButton(
             onPressed: () {
               _updateButton(button.copyWith(
-                customLabel: labelController.text.isEmpty ? null : labelController.text,
-                customIcon: iconController.text.isEmpty ? null : iconController.text,
-                customColor: colorController.text.isEmpty ? null : colorController.text,
+                customLabel:
+                    labelController.text.isEmpty ? null : labelController.text,
+                customIcon:
+                    iconController.text.isEmpty ? null : iconController.text,
+                customColor:
+                    colorController.text.isEmpty ? null : colorController.text,
               ));
               Navigator.pop(context);
             },
@@ -684,7 +699,7 @@ class _AddButtonDialogState extends State<_AddButtonDialog> {
   final Set<_SelectableItem> _selectedItems = {};
   final Set<String> _expandedCategories = {};
   final ScrollController _scrollController = ScrollController();
-  
+
   // Кеш источников сцен
   final Map<String, List<OBSSceneItem>> _sceneItemsCache = {};
   bool _isLoadingSceneItems = false;
@@ -699,7 +714,8 @@ class _AddButtonDialogState extends State<_AddButtonDialog> {
     setState(() => _isLoadingSceneItems = true);
     for (final scene in widget.provider.scenes) {
       try {
-        final items = await widget.provider.obsService.getSceneItemList(scene.name);
+        final items =
+            await widget.provider.obsService.getSceneItemList(scene.name);
         _sceneItemsCache[scene.name] = items;
       } catch (e) {
         _sceneItemsCache[scene.name] = [];
@@ -722,11 +738,16 @@ class _AddButtonDialogState extends State<_AddButtonDialog> {
       title: Row(
         children: [
           Expanded(
-            child: Text(_multiSelectMode ? 'Выбрано: ${_selectedItems.length}' : 'Добавить кнопку'),
+            child: Text(_multiSelectMode
+                ? 'Выбрано: ${_selectedItems.length}'
+                : 'Добавить кнопку'),
           ),
           IconButton(
-            icon: Icon(_multiSelectMode ? Icons.check_box : Icons.check_box_outline_blank),
-            tooltip: _multiSelectMode ? 'Одиночный режим' : 'Множественный выбор',
+            icon: Icon(_multiSelectMode
+                ? Icons.check_box
+                : Icons.check_box_outline_blank),
+            tooltip:
+                _multiSelectMode ? 'Одиночный режим' : 'Множественный выбор',
             onPressed: () {
               setState(() {
                 _multiSelectMode = !_multiSelectMode;
@@ -758,13 +779,15 @@ class _AddButtonDialogState extends State<_AddButtonDialog> {
                   'Старт/стоп стрима',
                 ),
                 _buildSelectableItem(
-                  _SelectableItem(QuickButtonType.virtualCam, 'Виртуальная камера', null),
+                  _SelectableItem(
+                      QuickButtonType.virtualCam, 'Виртуальная камера', null),
                   Icons.videocam,
                   Colors.purple,
                   'Вкл/выкл виртуальной камеры',
                 ),
                 _buildSelectableItem(
-                  _SelectableItem(QuickButtonType.studioMode, 'Studio Mode', null),
+                  _SelectableItem(
+                      QuickButtonType.studioMode, 'Studio Mode', null),
                   Icons.edit,
                   Colors.indigo,
                   'Вкл/выкл режима студии',
@@ -779,7 +802,8 @@ class _AddButtonDialogState extends State<_AddButtonDialog> {
                   'Сохранить скриншот',
                 ),
                 _buildSelectableItem(
-                  _SelectableItem(QuickButtonType.replayBuffer, 'Replay Buffer', null),
+                  _SelectableItem(
+                      QuickButtonType.replayBuffer, 'Replay Buffer', null),
                   Icons.replay,
                   Colors.teal,
                   'Сохранить повтор',
@@ -794,28 +818,33 @@ class _AddButtonDialogState extends State<_AddButtonDialog> {
 
               _buildCategory('Сцены', Icons.tv, [
                 ...widget.provider.scenes.map((scene) => _buildSelectableItem(
-                  _SelectableItem(QuickButtonType.scene, scene.name, scene.name),
-                  Icons.tv,
-                  scene.isCurrentProgram ? Colors.green : Colors.blue,
-                  scene.isCurrentProgram ? 'Текущая сцена' : null,
-                )),
+                      _SelectableItem(
+                          QuickButtonType.scene, scene.name, scene.name),
+                      Icons.tv,
+                      scene.isCurrentProgram ? Colors.green : Colors.blue,
+                      scene.isCurrentProgram ? 'Текущая сцена' : null,
+                    )),
               ]),
 
               _buildCategory('Аудио', Icons.volume_up, [
-                ...widget.provider.audioSources.map((source) => _buildSelectableItem(
-                  _SelectableItem(QuickButtonType.audioMute, source.name, source.name),
-                  source.isMuted ? Icons.volume_off : Icons.volume_up,
-                  source.isMuted ? Colors.red : Colors.green,
-                  source.isMuted ? 'Выключен' : 'Включён',
-                )),
+                ...widget.provider.audioSources
+                    .map((source) => _buildSelectableItem(
+                          _SelectableItem(QuickButtonType.audioMute,
+                              source.name, source.name),
+                          source.isMuted ? Icons.volume_off : Icons.volume_up,
+                          source.isMuted ? Colors.red : Colors.green,
+                          source.isMuted ? 'Выключен' : 'Включён',
+                        )),
               ]),
 
               // Источники каждой сцены
-              ...widget.provider.scenes.map((scene) => _buildSceneSourcesCategory(scene)),
+              ...widget.provider.scenes
+                  .map((scene) => _buildSceneSourcesCategory(scene)),
 
               _buildCategory('Другое', Icons.more_horiz, [
                 ListTile(
-                  leading: const Icon(Icons.horizontal_rule, color: Colors.grey),
+                  leading:
+                      const Icon(Icons.horizontal_rule, color: Colors.grey),
                   title: const Text('Разделитель'),
                   subtitle: const Text('Визуальная группировка'),
                   onTap: () => _showSeparatorDialog(),
@@ -844,7 +873,8 @@ class _AddButtonDialogState extends State<_AddButtonDialog> {
                       targetName: item.targetName,
                       targetId: item.sceneItemId,
                       sceneName: item.sceneName,
-                      order: widget.currentButtonCount + _selectedItems.toList().indexOf(item),
+                      order: widget.currentButtonCount +
+                          _selectedItems.toList().indexOf(item),
                     );
                   }).toList();
                   widget.onAddMultiple(buttons);
@@ -923,7 +953,8 @@ class _AddButtonDialogState extends State<_AddButtonDialog> {
 
   Widget _buildSceneSourcesCategory(OBSScene scene) {
     final items = _sceneItemsCache[scene.name] ?? [];
-    final isLoading = _isLoadingSceneItems && !_sceneItemsCache.containsKey(scene.name);
+    final isLoading =
+        _isLoadingSceneItems && !_sceneItemsCache.containsKey(scene.name);
     final icon = scene.isCurrentProgram ? Icons.play_circle : Icons.layers;
     final color = scene.isCurrentProgram ? Colors.green : null;
     final categoryKey = '${scene.name}_sources';
@@ -950,7 +981,8 @@ class _AddButtonDialogState extends State<_AddButtonDialog> {
                 color: Colors.grey.shade700,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Text('${items.length}', style: const TextStyle(fontSize: 11)),
+              child:
+                  Text('${items.length}', style: const TextStyle(fontSize: 11)),
             ),
         ],
       ),
@@ -963,70 +995,86 @@ class _AddButtonDialogState extends State<_AddButtonDialog> {
         }
       },
       children: isLoading
-          ? [const ListTile(title: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))))]
+          ? [
+              const ListTile(
+                  title: Center(
+                      child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2))))
+            ]
           : items.isEmpty
-              ? [const ListTile(title: Text('Нет источников', style: TextStyle(color: Colors.grey)))]
+              ? [
+                  const ListTile(
+                      title: Text('Нет источников',
+                          style: TextStyle(color: Colors.grey)))
+                ]
               : items.map((item) {
-                      final selectableItem = _SelectableItem(
-                        QuickButtonType.sceneItem,
-                        item.sourceName,
-                        item.sourceName,
-                        sceneItemId: item.sceneItemId,
-                        sceneName: scene.name,
-                      );
-                      final isSelected = _selectedItems.contains(selectableItem);
+                  final selectableItem = _SelectableItem(
+                    QuickButtonType.sceneItem,
+                    item.sourceName,
+                    item.sourceName,
+                    sceneItemId: item.sceneItemId,
+                    sceneName: scene.name,
+                  );
+                  final isSelected = _selectedItems.contains(selectableItem);
 
-                      return ListTile(
-                        leading: _multiSelectMode
-                            ? Checkbox(
-                                value: isSelected,
-                                onChanged: (value) {
-                                  setState(() {
-                                    if (value == true) {
-                                      _selectedItems.add(selectableItem);
-                                    } else {
-                                      _selectedItems.remove(selectableItem);
-                                    }
-                                  });
-                                },
-                              )
-                            : Icon(
-                                item.isVisible ? Icons.visibility : Icons.visibility_off,
-                                color: item.isVisible ? Colors.green : Colors.grey,
-                                size: 20,
-                              ),
-                        title: Text(item.sourceName),
-                        subtitle: Text(item.isVisible ? 'Видимый' : 'Скрытый', style: const TextStyle(fontSize: 11)),
-                        dense: true,
-                        trailing: _multiSelectMode
-                            ? Icon(
-                                item.isVisible ? Icons.visibility : Icons.visibility_off,
-                                color: item.isVisible ? Colors.green : Colors.grey,
-                                size: 20,
-                              )
-                            : null,
-                        onTap: () {
-                          if (_multiSelectMode) {
-                            setState(() {
-                              if (isSelected) {
-                                _selectedItems.remove(selectableItem);
-                              } else {
-                                _selectedItems.add(selectableItem);
-                              }
-                            });
+                  return ListTile(
+                    leading: _multiSelectMode
+                        ? Checkbox(
+                            value: isSelected,
+                            onChanged: (value) {
+                              setState(() {
+                                if (value == true) {
+                                  _selectedItems.add(selectableItem);
+                                } else {
+                                  _selectedItems.remove(selectableItem);
+                                }
+                              });
+                            },
+                          )
+                        : Icon(
+                            item.isVisible
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                            color: item.isVisible ? Colors.green : Colors.grey,
+                            size: 20,
+                          ),
+                    title: Text(item.sourceName),
+                    subtitle: Text(item.isVisible ? 'Видимый' : 'Скрытый',
+                        style: const TextStyle(fontSize: 11)),
+                    dense: true,
+                    trailing: _multiSelectMode
+                        ? Icon(
+                            item.isVisible
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                            color: item.isVisible ? Colors.green : Colors.grey,
+                            size: 20,
+                          )
+                        : null,
+                    onTap: () {
+                      if (_multiSelectMode) {
+                        setState(() {
+                          if (isSelected) {
+                            _selectedItems.remove(selectableItem);
                           } else {
-                            widget.onAddSingle(QuickButtonConfig(
-                              id: const Uuid().v4(),
-                              type: QuickButtonType.sceneItem,
-                              targetName: item.sourceName,
-                              targetId: item.sceneItemId,
-                              sceneName: scene.name,
-                              order: widget.currentButtonCount,
-                            ));
+                            _selectedItems.add(selectableItem);
                           }
-                        },
-                      );
-                    }).toList(),
+                        });
+                      } else {
+                        widget.onAddSingle(QuickButtonConfig(
+                          id: const Uuid().v4(),
+                          type: QuickButtonType.sceneItem,
+                          targetName: item.sourceName,
+                          targetId: item.sceneItemId,
+                          sceneName: scene.name,
+                          order: widget.currentButtonCount,
+                        ));
+                      }
+                    },
+                  );
+                }).toList(),
     );
   }
 
@@ -1114,7 +1162,8 @@ class _SelectableItem {
   final int? sceneItemId;
   final String? sceneName;
 
-  _SelectableItem(this.type, this.name, this.targetName, {this.sceneItemId, this.sceneName});
+  _SelectableItem(this.type, this.name, this.targetName,
+      {this.sceneItemId, this.sceneName});
 
   @override
   bool operator ==(Object other) =>
@@ -1127,7 +1176,8 @@ class _SelectableItem {
           sceneName == other.sceneName;
 
   @override
-  int get hashCode => Object.hash(type, name, targetName, sceneItemId, sceneName);
+  int get hashCode =>
+      Object.hash(type, name, targetName, sceneItemId, sceneName);
 }
 
 // ==================== Виджет кнопки ====================
@@ -1159,7 +1209,9 @@ class _QuickButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final displayColor = isPaused ? Colors.orange : activeColor;
     final bgColor = isActive
-        ? (isPaused ? Colors.orange.withOpacity(0.4) : activeColor.withOpacity(0.3))
+        ? (isPaused
+            ? Colors.orange.withOpacity(0.4)
+            : activeColor.withOpacity(0.3))
         : Colors.grey.shade800;
     final borderColor = isActive ? displayColor : Colors.grey.shade600;
 
@@ -1187,10 +1239,12 @@ class _QuickButton extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 2),
                     child: Text(
                       groupName!,
-                      style: TextStyle(fontSize: 9, color: Colors.grey.shade500),
+                      style:
+                          TextStyle(fontSize: 9, color: Colors.grey.shade500),
                     ),
                   ),
-                Icon(icon, size: 28, color: isActive ? displayColor : Colors.white70),
+                Icon(icon,
+                    size: 28, color: isActive ? displayColor : Colors.white70),
                 if (isPaused)
                   const Padding(
                     padding: EdgeInsets.only(top: 2),
@@ -1206,7 +1260,8 @@ class _QuickButton extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                      fontWeight:
+                          isActive ? FontWeight.bold : FontWeight.normal,
                       color: isActive ? displayColor : Colors.white,
                     ),
                   ),
@@ -1214,7 +1269,9 @@ class _QuickButton extends StatelessWidget {
                 if (sublabel != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: Text(sublabel!, style: TextStyle(fontSize: 9, color: Colors.grey.shade400)),
+                    child: Text(sublabel!,
+                        style: TextStyle(
+                            fontSize: 9, color: Colors.grey.shade400)),
                   ),
               ],
             ),
