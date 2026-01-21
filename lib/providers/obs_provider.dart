@@ -190,9 +190,11 @@ class OBSProvider extends ChangeNotifier {
         }
         break;
       case 'InputVolumeChanged':
-        // Debounce для частых событий громкости
-        _debounceTimer?.cancel();
-        _debounceTimer = Timer(const Duration(milliseconds: 100), _fetchAudioSources);
+        final inputName = data['inputName'] as String?;
+        final volumeMul = (data['inputVolumeMul'] as num?)?.toDouble();
+        if (inputName != null && volumeMul != null) {
+          _updateAudioVolume(inputName, volumeMul);
+        }
         break;
     }
   }
@@ -330,6 +332,14 @@ class OBSProvider extends ChangeNotifier {
     final index = _audioSources.indexWhere((s) => s.name == inputName);
     if (index != -1) {
       _audioSources[index] = _audioSources[index].copyWith(isMuted: muted);
+      notifyListeners();
+    }
+  }
+
+  void _updateAudioVolume(String inputName, double volume) {
+    final index = _audioSources.indexWhere((s) => s.name == inputName);
+    if (index != -1) {
+      _audioSources[index] = _audioSources[index].copyWith(volume: volume);
       notifyListeners();
     }
   }

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -111,6 +112,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _isLoading ? null : _importFromClipboard,
             ),
           ),
+          
+          const SizedBox(height: 24),
+          
+          // Секция скринсейвера
+          _buildSectionHeader('Скринсейвер'),
+          const SizedBox(height: 8),
+          
+          _ScreenSaverSettingsCard(),
           
           const SizedBox(height: 24),
           
@@ -535,6 +544,116 @@ class _InfoRow extends StatelessWidget {
           Icon(icon, size: 16, color: Colors.blue),
           const SizedBox(width: 8),
           Text(text, style: const TextStyle(fontSize: 13)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScreenSaverSettingsCard extends StatefulWidget {
+  @override
+  State<_ScreenSaverSettingsCard> createState() => _ScreenSaverSettingsCardState();
+}
+
+class _ScreenSaverSettingsCardState extends State<_ScreenSaverSettingsCard> {
+  bool _fullscreen = false;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final settingsJson = prefs.getString('app_settings');
+    if (settingsJson != null) {
+      try {
+        final settings = Map<String, dynamic>.from(jsonDecode(settingsJson));
+        setState(() {
+          _fullscreen = settings['fullscreenMode'] ?? false;
+          _isLoading = false;
+        });
+      } catch (e) {
+        setState(() => _isLoading = false);
+      }
+    } else {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveFullscreen(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    Map<String, dynamic> settings = {};
+    
+    final settingsJson = prefs.getString('app_settings');
+    if (settingsJson != null) {
+      try {
+        settings = Map<String, dynamic>.from(jsonDecode(settingsJson));
+      } catch (e) {
+        // ignore
+      }
+    }
+    
+    settings['fullscreenMode'] = value;
+    await prefs.setString('app_settings', jsonEncode(settings));
+    
+    // Применяем режим сразу
+    if (value) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else {
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.manual,
+        overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
+      );
+    }
+    
+    setState(() {
+      _fullscreen = value;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const _AnimatedCard(
+        child: ListTile(
+          leading: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          title: Text('Загрузка...'),
+        ),
+      );
+    }
+
+    return _AnimatedCard(
+      child: Column(
+        children: [
+          SwitchListTile(
+            secondary: const Icon(Icons.fullscreen, color: Colors.deepPurple),
+            title: const Text('Полноэкранный режим'),
+            subtitle: const Text('Скрывать системные панели'),
+            value: _fullscreen,
+            onChanged: _saveFullscreen,
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 16, color: Colors.grey),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Скринсейвер активируется через 30 минут неактивности',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

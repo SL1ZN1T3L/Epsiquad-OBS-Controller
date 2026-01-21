@@ -357,13 +357,19 @@ class OBSWebSocketService {
         try {
           final muteResponse = await _sendRequest('GetInputMute', {'inputName': name});
           final isMuted = muteResponse['d']?['responseData']?['inputMuted'] as bool? ?? false;
+          
+          // Получаем громкость
+          final volumeResponse = await _sendRequest('GetInputVolume', {'inputName': name});
+          final volumeMul = (volumeResponse['d']?['responseData']?['inputVolumeMul'] as num?)?.toDouble() ?? 1.0;
+          
           audioSources.add(OBSAudioSource(
             name: name,
             kind: kind,
             isMuted: isMuted,
+            volume: volumeMul,
           ));
         } catch (e) {
-          debugPrint('Error getting mute for $name: $e');
+          debugPrint('Error getting audio info for $name: $e');
         }
       }
     }

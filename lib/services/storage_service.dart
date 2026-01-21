@@ -146,5 +146,6 @@ class StorageService {
     'hapticFeedback': true,
     'confirmActions': true,
     'showHiddenScenes': false,
+    'fullscreenMode': false,
   };
 }

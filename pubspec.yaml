@@ -1,7 +1,7 @@
 name: obs_controller
 description: Professional OBS Studio remote control application
-publish_to: 'none'
-version: 3.0.4
+publish_to: ''
+version: 3.1.0
 
 environment:
   sdk: ^3.6.0
@@ -47,6 +47,9 @@ dependencies:
   path_provider: ^2.1.5
   share_plus: ^12.0.1
   file_picker: ^10.3.8
+  
+  # URL Launcher
+  url_launcher: ^6.3.1
   
   # UI
   cupertino_icons: ^1.0.8

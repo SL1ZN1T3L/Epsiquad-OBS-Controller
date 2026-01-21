@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -160,12 +161,9 @@ class _AboutScreenState extends State<AboutScreen> {
             child: ListTile(
               leading: const Icon(Icons.code),
               title: const Text('Open Source'),
-              subtitle: const Text('Исходный код доступен на GitHub'),
-              trailing: const Icon(Icons.arrow_forward),
-              onTap: () {
-                // Здесь можно добавить ссылку на GitHub
-                _showInfo(context, 'Репозиторий будет опубликован');
-              },
+              subtitle: const Text('github.com/SL1ZN1T3L/Epsiquad-OBS-Controller'),
+              trailing: const Icon(Icons.open_in_new),
+              onTap: () => _openGitHub(),
             ),
           ),
           
@@ -173,7 +171,7 @@ class _AboutScreenState extends State<AboutScreen> {
           
           // Лицензия
           const Text(
-            '© 2026 Epsiquad & Claude\nMIT License',
+            '© 2026 Epsiquad & Claude\nGPL 2.0 License',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.grey,
@@ -239,10 +237,11 @@ class _AboutScreenState extends State<AboutScreen> {
     );
   }
 
-  static void _showInfo(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+  static Future<void> _openGitHub() async {
+    final uri = Uri.parse('https://github.com/SL1ZN1T3L/Epsiquad-OBS-Controller');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 }
 

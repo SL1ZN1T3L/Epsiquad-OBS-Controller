@@ -17,11 +17,20 @@ void main() async {
     debugPrint('Display mode error: $e');
   }
   
-  // Убираем полноэкранный режим
-  SystemChrome.setEnabledSystemUIMode(
-    SystemUiMode.manual,
-    overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
-  );
+  final storage = await StorageService.init();
+  
+  // Загружаем настройку полноэкранного режима
+  final fullscreenMode = await storage.getSetting<bool>('fullscreenMode', false);
+  
+  // Применяем режим системного UI
+  if (fullscreenMode) {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  } else {
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
+    );
+  }
   
   // Устанавливаем цвет статус бара
   SystemChrome.setSystemUIOverlayStyle(
@@ -31,8 +40,6 @@ void main() async {
       systemNavigationBarColor: Colors.black,
     ),
   );
-  
-  final storage = await StorageService.init();
   
   runApp(
     ChangeNotifierProvider(
