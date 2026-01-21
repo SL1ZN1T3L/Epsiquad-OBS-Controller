@@ -49,7 +49,8 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  void _showUpdateNotification(UpdateCheckResult result, UpdateService updateService) {
+  void _showUpdateNotification(
+      UpdateCheckResult result, UpdateService updateService) {
     final release = result.latestRelease!;
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -75,7 +76,8 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Future<void> _showUpdateDialog(UpdateCheckResult result, UpdateService updateService) async {
+  Future<void> _showUpdateDialog(
+      UpdateCheckResult result, UpdateService updateService) async {
     final release = result.latestRelease!;
 
     final action = await showDialog<String>(
@@ -122,7 +124,8 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   constraints: const BoxConstraints(maxHeight: 150),
                   child: SingleChildScrollView(
-                    child: Text(release.body, style: const TextStyle(fontSize: 13)),
+                    child: Text(release.body,
+                        style: const TextStyle(fontSize: 13)),
                   ),
                 ),
               ],

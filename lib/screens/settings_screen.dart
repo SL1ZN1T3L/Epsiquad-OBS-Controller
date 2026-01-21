@@ -548,8 +548,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 4),
               Row(
                 children: [
-                  const Icon(Icons.new_releases,
-                      size: 18, color: Colors.green),
+                  const Icon(Icons.new_releases, size: 18, color: Colors.green),
                   const SizedBox(width: 8),
                   Text(
                     'Новая версия: ${release.version}',
@@ -754,7 +753,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } else {
       // Fallback: показываем путь к файлу
       if (mounted) {
-        _showSuccess('APK сохранён: $filePath\nУстановите вручную через файловый менеджер.');
+        _showSuccess(
+            'APK сохранён: $filePath\nУстановите вручную через файловый менеджер.');
       }
     }
   }
@@ -1068,7 +1068,8 @@ class _UpdateSettingsCardState extends State<_UpdateSettingsCard> {
                       await widget.updateService.clearSkippedVersion();
                       setState(() {});
                     },
-                    child: const Text('Сбросить', style: TextStyle(fontSize: 12)),
+                    child:
+                        const Text('Сбросить', style: TextStyle(fontSize: 12)),
                   ),
                 ],
               ),

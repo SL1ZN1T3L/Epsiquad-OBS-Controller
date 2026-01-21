@@ -75,7 +75,7 @@ class UpdateCheckResult {
 /// Сервис для проверки и скачивания обновлений с GitHub
 /// Канал обновлений
 enum UpdateChannel {
-  stable,    // Только стабильные релизы
+  stable, // Только стабильные релизы
   prerelease // Включая пре-релизы (бета, альфа)
 }
 
@@ -182,17 +182,16 @@ class UpdateService {
 
         // Пропускаем черновики всегда
         if (isDraft) continue;
-        
+
         // Если канал stable - пропускаем пре-релизы
         if (!allowPrerelease && isPrerelease) continue;
-        
+
         latestRelease = ReleaseInfo.fromJson(release);
         break;
       }
 
       // Сохраняем время проверки
-      await _prefs.setInt(
-          _lastCheckKey, DateTime.now().millisecondsSinceEpoch);
+      await _prefs.setInt(_lastCheckKey, DateTime.now().millisecondsSinceEpoch);
 
       if (latestRelease == null) {
         return UpdateCheckResult(
@@ -311,7 +310,7 @@ class UpdateService {
 
     return filePath;
   }
-  
+
   /// Открывает страницу релиза на GitHub
   Future<bool> openReleasePage(String url) async {
     final uri = Uri.parse(url);
