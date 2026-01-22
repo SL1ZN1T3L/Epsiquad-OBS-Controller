@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -68,6 +69,17 @@ class MyApp extends StatelessWidget {
       home: const ShaderWarmup(
         child: HomeScreen(),
       ),
+      builder: (context, child) {
+        if (kDebugMode) {
+          return Banner(
+            message: 'BETA',
+            location: BannerLocation.topEnd,
+            color: Colors.deepOrange,
+            child: child ?? const SizedBox.shrink(),
+          );
+        }
+        return child ?? const SizedBox.shrink();
+      },
     );
   }
 }
