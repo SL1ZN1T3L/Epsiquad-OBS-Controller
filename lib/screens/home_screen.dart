@@ -245,44 +245,43 @@ class _HomeScreenState extends State<HomeScreen>
               ],
             ),
           ),
-          floatingActionButton: provider.isConnected
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    FloatingActionButton.small(
-                      heroTag: 'settings',
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const SettingsScreen()),
-                      ),
-                      tooltip: 'Настройки',
-                      child: const Icon(Icons.settings),
-                    ),
-                    const SizedBox(height: 8),
-                    FloatingActionButton.small(
-                      heroTag: 'about',
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const AboutScreen()),
-                      ),
-                      tooltip: 'О приложении',
-                      child: const Icon(Icons.info_outline),
-                    ),
-                    const SizedBox(height: 8),
-                    FloatingActionButton(
-                      heroTag: 'quick',
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const QuickControlScreen()),
-                      ),
-                      tooltip: 'Быстрое управление',
-                      child: const Icon(Icons.grid_view),
-                    ),
-                  ],
-                )
-              : null,
+          floatingActionButton: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FloatingActionButton.small(
+                heroTag: 'settings',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                ),
+                tooltip: 'Настройки',
+                child: const Icon(Icons.settings),
+              ),
+              const SizedBox(height: 8),
+              FloatingActionButton.small(
+                heroTag: 'about',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AboutScreen()),
+                ),
+                tooltip: 'О приложении',
+                child: const Icon(Icons.info_outline),
+              ),
+              if (provider.isConnected) ...[
+                const SizedBox(height: 8),
+                FloatingActionButton(
+                  heroTag: 'quick',
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const QuickControlScreen()),
+                  ),
+                  tooltip: 'Быстрое управление',
+                  child: const Icon(Icons.grid_view),
+                ),
+              ],
+            ],
+          ),
           bottomNavigationBar: provider.isConnected
               ? CompactControlPanel(
                   status: provider.status,
