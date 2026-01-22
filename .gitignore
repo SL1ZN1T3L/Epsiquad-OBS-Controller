@@ -133,3 +133,4 @@ web/
 
 # Lock file
 pubspec.lock
+devtools_options.yaml

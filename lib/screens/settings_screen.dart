@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:open_filex/open_filex.dart';
 import '../services/backup_service.dart';
 import '../services/update_service.dart';
 import '../providers/obs_provider.dart';
@@ -640,31 +641,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Показываем диалог загрузки
     double progress = 0;
     bool cancelled = false;
+    StateSetter? dialogSetState;
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Загрузка обновления'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              LinearProgressIndicator(value: progress),
-              const SizedBox(height: 16),
-              Text('${(progress * 100).toStringAsFixed(0)}%'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                cancelled = true;
-                Navigator.pop(context);
-              },
-              child: const Text('Отмена'),
+        builder: (context, setDialogState) {
+          dialogSetState = setDialogState;
+          return AlertDialog(
+            title: const Text('Загрузка обновления'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(value: progress),
+                const SizedBox(height: 16),
+                Text('${(progress * 100).toStringAsFixed(0)}%'),
+              ],
             ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  cancelled = true;
+                  Navigator.pop(context);
+                },
+                child: const Text('Отмена'),
+              ),
+            ],
+          );
+        },
       ),
     );
 
@@ -673,9 +678,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         release,
         onProgress: (p) {
           progress = p;
-          // Обновляем диалог
-          if (mounted && !cancelled) {
-            setState(() {});
+          // Обновляем диалог через его собственный setState
+          if (!cancelled && dialogSetState != null) {
+            dialogSetState!(() {});
           }
         },
       );
@@ -745,16 +750,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _openApkFile(String filePath) async {
-    // Используем url_launcher для открытия файла
-    // На Android нужно использовать FileProvider для доступа к файлу
-    final uri = Uri.parse('file://$filePath');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      // Fallback: показываем путь к файлу
+    // Используем open_filex для открытия APK файла
+    // Это корректно работает с FileProvider на Android 7+
+    final result = await OpenFilex.open(filePath);
+    
+    if (result.type != ResultType.done) {
       if (mounted) {
+        // Если не удалось открыть, показываем путь
         _showSuccess(
-            'APK сохранён: $filePath\nУстановите вручную через файловый менеджер.');
+          'APK сохранён: $filePath\nУстановите вручную через файловый менеджер.\n\nОшибка: ${result.message}',
+        );
       }
     }
   }
