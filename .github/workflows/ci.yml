@@ -9,6 +9,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write  # Разрешение на создание релизов
+
 env:
   FLUTTER_VERSION: '3.38.7'
   JAVA_VERSION: '17'
