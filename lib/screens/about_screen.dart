@@ -175,7 +175,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
           // Лицензия
           const Text(
-            '© 2026 Epsiquad & Claude\nGPL 2.0 License',
+            '© 2026 Epsiquad & Claude\nGPL 3.0 License',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.grey,
