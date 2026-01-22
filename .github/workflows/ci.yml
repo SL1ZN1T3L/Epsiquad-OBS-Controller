@@ -3,6 +3,8 @@ name: CI/CD
 on:
   push:
     branches: [main, develop]
+    tags:
+      - 'v*'  # Запуск при пуше тегов вида v1.0.0
   pull_request:
     branches: [main]
   workflow_dispatch:
