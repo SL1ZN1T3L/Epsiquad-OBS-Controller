@@ -28,16 +28,6 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Cache pub dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.pub-cache
-            .dart_tool
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pub-
-
       - name: Install dependencies
         run: flutter pub get
 
@@ -74,30 +64,12 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Cache pub dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.pub-cache
-            .dart_tool
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pub-
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
       - name: Install dependencies
         run: flutter pub get
 
+      # Debug APK только для обычных пушей (не для тегов/релизов)
       - name: Build APK (Debug)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: flutter build apk --debug
 
       - name: Build APK (Release)
@@ -105,10 +77,13 @@ jobs:
 
       - name: Rename APK files
         run: |
-          mv build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/OBS-Controller-Dev.apk
+          if [ -f build/app/outputs/flutter-apk/app-debug.apk ]; then
+            mv build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/OBS-Controller-Dev.apk
+          fi
           mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/OBS-Controller.apk
 
       - name: Upload Debug APK
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
@@ -130,56 +105,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      # Скачиваем уже собранный APK из предыдущего job
+      - name: Download Release APK
+        uses: actions/download-artifact@v4
         with:
-          distribution: 'temurin'
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: 'gradle'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      - name: Cache pub dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.pub-cache
-            .dart_tool
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pub-
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build Release APK
-        run: flutter build apk --release
-
-      - name: Rename APK file
-        run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/OBS-Controller.apk
+          name: release-apk
+          path: ./
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/app/outputs/flutter-apk/OBS-Controller.apk
+          files: OBS-Controller.apk
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
