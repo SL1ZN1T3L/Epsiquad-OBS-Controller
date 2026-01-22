@@ -753,7 +753,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Используем open_filex для открытия APK файла
     // Это корректно работает с FileProvider на Android 7+
     final result = await OpenFilex.open(filePath);
-    
+
     if (result.type != ResultType.done) {
       if (mounted) {
         // Если не удалось открыть, показываем путь
