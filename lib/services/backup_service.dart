@@ -50,7 +50,7 @@ class BackupService {
   static const _backupVersion = '1.0';
   static const _connectionsKey = 'obs_connections';
   static const _settingsKey = 'app_settings';
-  static const _quickControlKey = 'quick_control_buttons';
+  static const _quickControlKey = 'quickControlConfig';
 
   final SharedPreferences _prefs;
 
