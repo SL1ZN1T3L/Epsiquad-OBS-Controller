@@ -23,7 +23,7 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace "com.epsiquad.obs_controller"
+    namespace "com.epsiquad.obscontroller"
     compileSdk 36
     ndkVersion flutter.ndkVersion
 
@@ -41,7 +41,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.epsiquad.obs_controller"
+        applicationId "com.epsiquad.obscontroller"
         minSdkVersion flutter.minSdkVersion
         targetSdkVersion 34
         versionCode flutterVersionCode.toInteger()
