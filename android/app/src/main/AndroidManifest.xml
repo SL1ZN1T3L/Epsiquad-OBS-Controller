@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.epsiquad.obs_controller">
+    package="com.epsiquad.obscontroller">
 
     <!-- Интернет для WebSocket -->
     <uses-permission android:name="android.permission.INTERNET" />

@@ -1,4 +1,4 @@
-package com.example.obsontroller
+package com.epsiquad.obscontroller
 
 import io.flutter.embedding.android.FlutterActivity
 
