@@ -165,6 +165,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               return Column(
                 children: snapshot.data!.map((file) {
+                  // Проверяем что файл ещё существует (мог быть удалён)
+                  if (!file.existsSync()) return const SizedBox.shrink();
+
                   final fileName = file.path.split('/').last;
                   final date = file.lastModifiedSync();
 
