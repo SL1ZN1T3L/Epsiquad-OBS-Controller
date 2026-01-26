@@ -82,8 +82,14 @@ class BackupService {
     final quickControlConfigs = <Map<String, dynamic>>[];
     if (quickControlJson != null) {
       try {
-        final list = json.decode(quickControlJson) as List;
-        quickControlConfigs.addAll(list.cast<Map<String, dynamic>>());
+        final data = json.decode(quickControlJson);
+        // Quick Control хранится как объект {buttons: [...], columns: N}, а не как массив
+        if (data is Map<String, dynamic>) {
+          quickControlConfigs.add(data);
+        } else if (data is List) {
+          // Поддержка старого формата (если был)
+          quickControlConfigs.addAll(data.cast<Map<String, dynamic>>());
+        }
       } catch (e) {
         debugPrint('Error parsing quick control: $e');
       }
@@ -162,10 +168,10 @@ class BackupService {
     }
 
     if (restoreQuickControl && backup.quickControlConfigs.isNotEmpty) {
-      await _prefs.setString(
-          _quickControlKey, json.encode(backup.quickControlConfigs));
-      debugPrint(
-          'Restored ${backup.quickControlConfigs.length} quick control configs');
+      // Quick Control хранится как единый объект, а не массив
+      final configData = backup.quickControlConfigs.first;
+      await _prefs.setString(_quickControlKey, json.encode(configData));
+      debugPrint('Restored quick control config');
     }
   }
 
