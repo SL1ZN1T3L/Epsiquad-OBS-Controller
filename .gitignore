@@ -55,7 +55,10 @@ unlinked_spec.ds
 **/android/local.properties
 **/android/**/GeneratedPluginRegistrant.java
 **/android/key.properties
+**/android/keystore.txt
+**/android/create_keystore.bat
 *.jks
+SETUP_SIGNING.md
 
 # iOS/XCode related
 **/ios/**/*.mode1v3
