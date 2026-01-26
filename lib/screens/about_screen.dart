@@ -241,11 +241,20 @@ class _AboutScreenState extends State<AboutScreen> {
     );
   }
 
-  static Future<void> _openGitHub() async {
+  Future<void> _openGitHub() async {
     final uri =
         Uri.parse('https://github.com/SL1ZN1T3L/Epsiquad-OBS-Controller');
-    if (await canLaunchUrl(uri)) {
+    try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Не удалось открыть ссылку'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 }

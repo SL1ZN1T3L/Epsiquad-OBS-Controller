@@ -1,7 +1,7 @@
 name: obs_controller
 description: Professional OBS Studio remote control application
 publish_to: ''
-version: 3.4.3
+version: 3.5.0
 
 environment:
   sdk: ^3.6.0

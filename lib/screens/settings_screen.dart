@@ -11,6 +11,7 @@ import '../services/backup_service.dart';
 import '../services/update_service.dart';
 import '../providers/obs_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -25,6 +26,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = false;
   bool _isCheckingUpdate = false;
   bool _isInitialized = false;
+  String _version = '';
+  String _buildNumber = '';
 
   @override
   void initState() {
@@ -34,10 +37,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _initServices() async {
     final prefs = await SharedPreferences.getInstance();
+    final info = await PackageInfo.fromPlatform();
     if (mounted) {
       setState(() {
         _backupService = BackupService(prefs);
         _updateService = UpdateService(prefs);
+        _version = info.version;
+        _buildNumber = info.buildNumber;
         _isInitialized = true;
       });
     }
@@ -248,6 +254,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+
+          const SizedBox(height: 32),
+
+          // Версия приложения
+          Center(
+            child: Text(
+              _version.isEmpty
+                  ? 'Загрузка...'
+                  : 'Версия $_version ($_buildNumber)',
+              style: const TextStyle(
+                color: Colors.grey,
+                fontSize: 12,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
         ],
       ),
     );
