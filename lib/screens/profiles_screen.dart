@@ -115,6 +115,8 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     final prefs = await SharedPreferences.getInstance();
     final configJson = prefs.getString('quickControlConfig');
 
+    if (!mounted) return;
+
     if (configJson == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -285,7 +287,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
 
                     return Card(
                       elevation: isActive ? 4 : 1,
-                      color: isActive ? Colors.blue.withOpacity(0.1) : null,
+                      color: isActive ? Colors.blue.withValues(alpha:0.1) : null,
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor: isActive ? Colors.blue : Colors.grey,

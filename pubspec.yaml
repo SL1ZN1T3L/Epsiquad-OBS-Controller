@@ -1,7 +1,7 @@
 name: obs_controller
 description: Professional OBS Studio remote control application
 publish_to: ''
-version: 3.5.1
+version: 3.5.2
 
 environment:
   sdk: ^3.6.0
@@ -15,6 +15,7 @@ dependencies:
   
   # Storage
   shared_preferences: ^2.5.0
+  shared_preferences_android: 2.4.0
   
   # Network
   web_socket_channel: ^3.0.3

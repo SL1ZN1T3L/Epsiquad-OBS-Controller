@@ -120,8 +120,8 @@ class _AnimatedSceneCardState extends State<_AnimatedSceneCard>
                 boxShadow: [
                   BoxShadow(
                     color: isActive
-                        ? Colors.red.withOpacity(0.4)
-                        : Colors.black.withOpacity(0.2),
+                        ? Colors.red.withValues(alpha:0.4)
+                        : Colors.black.withValues(alpha:0.2),
                     blurRadius: isActive ? 12 : 4,
                     spreadRadius: isActive ? 2 : 0,
                   ),

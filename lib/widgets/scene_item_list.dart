@@ -97,7 +97,7 @@ class _AnimatedSourceItemState extends State<_AnimatedSourceItem>
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: widget.item.isVisible
-                    ? Colors.green.withOpacity(0.3)
+                    ? Colors.green.withValues(alpha:0.3)
                     : Colors.transparent,
                 width: 1,
               ),

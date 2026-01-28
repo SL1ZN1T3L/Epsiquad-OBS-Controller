@@ -1210,8 +1210,8 @@ class _QuickButton extends StatelessWidget {
     final displayColor = isPaused ? Colors.orange : activeColor;
     final bgColor = isActive
         ? (isPaused
-            ? Colors.orange.withOpacity(0.4)
-            : activeColor.withOpacity(0.3))
+            ? Colors.orange.withValues(alpha:0.4)
+            : activeColor.withValues(alpha:0.3))
         : Colors.grey.shade800;
     final borderColor = isActive ? displayColor : Colors.grey.shade600;
 

@@ -116,8 +116,8 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: source.isMuted
-                    ? Colors.red.withOpacity(0.3)
-                    : Colors.green.withOpacity(0.2),
+                    ? Colors.red.withValues(alpha:0.3)
+                    : Colors.green.withValues(alpha:0.2),
                 width: 1,
               ),
             ),

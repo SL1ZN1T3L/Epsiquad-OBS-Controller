@@ -326,9 +326,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     try {
       final jsonString = await _backupService!.exportToString();
-      await Share.share(
-        jsonString,
-        subject: 'OBS Controller Backup',
+      await SharePlus.instance.share(
+        ShareParams(text: jsonString, subject: 'OBS Controller Backup'),
       );
     } catch (e) {
       if (mounted) {
@@ -594,7 +593,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.1),
+                    color: Colors.grey.withValues(alpha:0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   constraints: const BoxConstraints(maxHeight: 200),
@@ -1118,21 +1117,26 @@ class _UpdateSettingsCardState extends State<_UpdateSettingsCard> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            RadioListTile<UpdateChannel>(
-              value: UpdateChannel.stable,
+            RadioGroup<UpdateChannel>(
               groupValue: _channel,
-              title: const Text('Stable'),
-              subtitle: const Text('Только стабильные релизы'),
-              secondary: const Icon(Icons.verified, color: Colors.green),
               onChanged: (value) => Navigator.pop(context, value),
-            ),
-            RadioListTile<UpdateChannel>(
-              value: UpdateChannel.prerelease,
-              groupValue: _channel,
-              title: const Text('Pre-release'),
-              subtitle: const Text('Бета-версии и тестовые сборки'),
-              secondary: const Icon(Icons.science, color: Colors.orange),
-              onChanged: (value) => Navigator.pop(context, value),
+              child: const Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<UpdateChannel>(
+                    value: UpdateChannel.stable,
+                    title: Text('Stable'),
+                    subtitle: Text('Только стабильные релизы'),
+                    secondary: Icon(Icons.verified, color: Colors.green),
+                  ),
+                  RadioListTile<UpdateChannel>(
+                    value: UpdateChannel.prerelease,
+                    title: Text('Pre-release'),
+                    subtitle: Text('Бета-версии и тестовые сборки'),
+                    secondary: Icon(Icons.science, color: Colors.orange),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
             const Padding(

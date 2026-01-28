@@ -85,10 +85,12 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedBuilder(
+    return Material(
+      type: MaterialType.transparency,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedBuilder(
         animation: _gradientController,
         builder: (context, child) {
           return Container(
@@ -136,6 +138,7 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -187,8 +190,8 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
             shape: BoxShape.circle,
             gradient: RadialGradient(
               colors: [
-                particle.color.withOpacity(0.3),
-                particle.color.withOpacity(0.0),
+                particle.color.withValues(alpha:0.3),
+                particle.color.withValues(alpha:0.0),
               ],
             ),
           ),
@@ -202,14 +205,14 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        color: Colors.black.withOpacity(0.3),
+        color: Colors.black.withValues(alpha:0.3),
         border: Border.all(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha:0.3),
             blurRadius: 30,
             spreadRadius: 5,
           ),
@@ -230,8 +233,8 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Colors.purple.withOpacity(0.3),
-                      Colors.blue.withOpacity(0.3),
+                      Colors.purple.withValues(alpha:0.3),
+                      Colors.blue.withValues(alpha:0.3),
                     ],
                   ),
                 ),
@@ -292,14 +295,14 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
             children: [
               Icon(
                 Icons.touch_app_rounded,
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha:0.3),
                 size: 16,
               ),
               const SizedBox(width: 8),
               Text(
                 'Нажмите для продолжения',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.3),
+                  color: Colors.white.withValues(alpha:0.3),
                   fontSize: 13,
                   fontWeight: FontWeight.w300,
                 ),
@@ -322,15 +325,15 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.15 * _pulseAnimation.value),
+            color: color.withValues(alpha:0.15 * _pulseAnimation.value),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: color.withOpacity(0.5 * _pulseAnimation.value),
+              color: color.withValues(alpha:0.5 * _pulseAnimation.value),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: color.withOpacity(0.3 * _pulseAnimation.value),
+                color: color.withValues(alpha:0.3 * _pulseAnimation.value),
                 blurRadius: 12,
                 spreadRadius: 0,
               ),
@@ -368,7 +371,7 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
             Text(
               '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.15),
+                color: Colors.white.withValues(alpha:0.15),
                 fontSize: 72,
                 fontWeight: FontWeight.w100,
                 letterSpacing: 4,
@@ -377,7 +380,7 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
             Text(
               ':${now.second.toString().padLeft(2, '0')}',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.08),
+                color: Colors.white.withValues(alpha:0.08),
                 fontSize: 24,
                 fontWeight: FontWeight.w100,
               ),
@@ -420,7 +423,7 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
         Text(
           weekdays[now.weekday - 1],
           style: TextStyle(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             fontSize: 16,
             fontWeight: FontWeight.w300,
           ),
@@ -428,7 +431,7 @@ class _ScreenSaverOverlayState extends State<ScreenSaverOverlay>
         Text(
           '${now.day} ${months[now.month - 1]}',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.15),
+            color: Colors.white.withValues(alpha:0.15),
             fontSize: 24,
             fontWeight: FontWeight.w200,
           ),
