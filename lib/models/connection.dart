@@ -6,6 +6,9 @@ class OBSConnection {
   String? password;
   bool isDefault;
   DateTime? lastConnected;
+  String iconName;
+
+  static const defaultIcon = 'computer';
 
   OBSConnection({
     required this.id,
@@ -15,6 +18,7 @@ class OBSConnection {
     this.password,
     this.isDefault = false,
     this.lastConnected,
+    this.iconName = defaultIcon,
   });
 
   factory OBSConnection.fromJson(Map<String, dynamic> json) {
@@ -28,6 +32,7 @@ class OBSConnection {
       lastConnected: json['lastConnected'] != null
           ? DateTime.parse(json['lastConnected'] as String)
           : null,
+      iconName: json['iconName'] as String? ?? defaultIcon,
     );
   }
 
@@ -40,6 +45,7 @@ class OBSConnection {
       'password': password,
       'isDefault': isDefault,
       'lastConnected': lastConnected?.toIso8601String(),
+      'iconName': iconName,
     };
   }
 
@@ -53,6 +59,7 @@ class OBSConnection {
     String? password,
     bool? isDefault,
     DateTime? lastConnected,
+    String? iconName,
   }) {
     return OBSConnection(
       id: id ?? this.id,
@@ -62,6 +69,7 @@ class OBSConnection {
       password: password ?? this.password,
       isDefault: isDefault ?? this.isDefault,
       lastConnected: lastConnected ?? this.lastConnected,
+      iconName: iconName ?? this.iconName,
     );
   }
 

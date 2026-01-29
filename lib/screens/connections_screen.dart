@@ -5,6 +5,21 @@ import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import '../providers/obs_provider.dart';
 
+const Map<String, IconData> connectionIcons = {
+  'computer': Icons.computer,
+  'desktop': Icons.desktop_windows,
+  'laptop': Icons.laptop,
+  'monitor': Icons.monitor,
+  'tv': Icons.tv,
+  'videocam': Icons.videocam,
+  'live_tv': Icons.live_tv,
+  'cast': Icons.cast,
+  'devices': Icons.devices,
+  'home': Icons.home,
+  'work': Icons.work,
+  'cloud': Icons.cloud,
+};
+
 class ConnectionsScreen extends StatefulWidget {
   const ConnectionsScreen({super.key});
 
@@ -92,10 +107,14 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
                               ? Colors.green
                               : connection.isDefault
                                   ? Theme.of(context).primaryColor
-                                  : Colors.grey,
+                                  : Theme.of(context).colorScheme.surface,
                           child: Icon(
-                            isConnected ? Icons.check : Icons.computer,
-                            color: Colors.white,
+                            isConnected
+                                ? Icons.check
+                                : connectionIcons[connection.iconName] ?? Icons.computer,
+                            color: isConnected || connection.isDefault
+                                ? Colors.white
+                                : Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                         title: Text(
@@ -307,9 +326,9 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
   late TextEditingController _hostController;
   late TextEditingController _portController;
   late TextEditingController _passwordController;
-  bool _isDefault = false;
   bool _showPassword = false;
   bool _isLoading = false;
+  late String _selectedIcon;
 
   @override
   void initState() {
@@ -326,7 +345,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     _passwordController = TextEditingController(
       text: widget.connection?.password ?? '',
     );
-    _isDefault = widget.connection?.isDefault ?? false;
+    _selectedIcon = widget.connection?.iconName ?? OBSConnection.defaultIcon;
 
     debugPrint(
         'ConnectionDialog init: host=${widget.connection?.host}, password=${widget.connection?.password}');
@@ -341,6 +360,54 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     super.dispose();
   }
 
+  Widget _buildIconPicker() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Иконка',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: connectionIcons.entries.map((entry) {
+            final isSelected = _selectedIcon == entry.key;
+            return InkWell(
+              onTap: () => setState(() => _selectedIcon = entry.key),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Theme.of(context).primaryColor
+                      : Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: isSelected
+                      ? Border.all(
+                          color: Theme.of(context).primaryColor,
+                          width: 2,
+                        )
+                      : null,
+                ),
+                child: Icon(
+                  entry.value,
+                  color: isSelected
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.connection?.id != null &&
@@ -353,6 +420,9 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Выбор иконки
+            _buildIconPicker(),
+            const SizedBox(height: 16),
             TextField(
               controller: _nameController,
               decoration: const InputDecoration(
@@ -397,15 +467,6 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
                 ),
               ),
               obscureText: !_showPassword,
-            ),
-            const SizedBox(height: 16),
-            SwitchListTile(
-              title: const Text('По умолчанию'),
-              subtitle: const Text('Автоподключение при запуске'),
-              value: _isDefault,
-              onChanged: (value) {
-                setState(() => _isDefault = value);
-              },
             ),
           ],
         ),
@@ -459,8 +520,9 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       host: host,
       port: port,
       password: password,
-      isDefault: _isDefault,
+      isDefault: widget.connection?.isDefault ?? false,
       lastConnected: widget.connection?.lastConnected,
+      iconName: _selectedIcon,
     );
 
     debugPrint('Saving connection: ${connection.toJson()}');
