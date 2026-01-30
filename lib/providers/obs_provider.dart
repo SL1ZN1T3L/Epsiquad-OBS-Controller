@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import '../models/models.dart';
 import '../services/services.dart';
@@ -196,7 +197,9 @@ class OBSProvider extends ChangeNotifier {
         final inputName = data['inputName'] as String?;
         final volumeMul = (data['inputVolumeMul'] as num?)?.toDouble();
         if (inputName != null && volumeMul != null) {
-          _updateAudioVolume(inputName, volumeMul);
+          // Конвертируем mul в позицию слайдера (mul^0.25)
+          final sliderValue = volumeMul > 0 ? pow(volumeMul, 0.25).toDouble() : 0.0;
+          _updateAudioVolume(inputName, sliderValue);
         }
         break;
     }

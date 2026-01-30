@@ -496,6 +496,7 @@ class _QuickControlScreenState extends State<QuickControlScreen>
           isActive = !(source?.isMuted ?? true);
           activeColor = config.color ?? Colors.orange;
           onTap = () => provider.toggleAudioMute(config.targetName!);
+          onLongPress = () => _showVolumeDialog(context, provider, config.targetName!, source);
         }
         break;
 
@@ -671,6 +672,136 @@ class _QuickControlScreenState extends State<QuickControlScreen>
           ),
         ],
       ),
+    );
+  }
+
+  void _showVolumeDialog(BuildContext context, OBSProvider provider, String inputName, OBSAudioSource? source) {
+    if (source == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => _VolumeControlDialog(
+        inputName: inputName,
+        initialVolume: source.volume,
+        isMuted: source.isMuted,
+        onVolumeChange: (value) => provider.setAudioVolume(inputName, value),
+        onMuteToggle: () => provider.toggleAudioMute(inputName),
+      ),
+    );
+  }
+}
+
+// ==================== Диалог управления громкостью ====================
+
+class _VolumeControlDialog extends StatefulWidget {
+  final String inputName;
+  final double initialVolume;
+  final bool isMuted;
+  final Function(double) onVolumeChange;
+  final VoidCallback onMuteToggle;
+
+  const _VolumeControlDialog({
+    required this.inputName,
+    required this.initialVolume,
+    required this.isMuted,
+    required this.onVolumeChange,
+    required this.onMuteToggle,
+  });
+
+  @override
+  State<_VolumeControlDialog> createState() => _VolumeControlDialogState();
+}
+
+class _VolumeControlDialogState extends State<_VolumeControlDialog> {
+  late double _volume;
+  late bool _isMuted;
+
+  @override
+  void initState() {
+    super.initState();
+    _volume = widget.initialVolume;
+    _isMuted = widget.isMuted;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(
+        widget.inputName,
+        style: const TextStyle(fontSize: 16),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      content: SizedBox(
+        width: 160,
+        height: 380,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Процент громкости
+            Text(
+              '${(_volume * 100).round()}%',
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: _isMuted ? Colors.red : Colors.green,
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Вертикальный слайдер
+            Expanded(
+              child: RotatedBox(
+                quarterTurns: -1,
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 12,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 16),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+                    activeTrackColor: _isMuted ? Colors.red : Colors.green,
+                    inactiveTrackColor: Colors.grey.shade700,
+                    thumbColor: _isMuted ? Colors.red : Colors.green,
+                  ),
+                  child: Slider(
+                    value: _volume.clamp(0.0, 1.0),
+                    min: 0.0,
+                    max: 1.0,
+                    divisions: 100,
+                    onChanged: (value) {
+                      setState(() => _volume = value);
+                    },
+                    onChangeEnd: (value) {
+                      widget.onVolumeChange(value);
+                    },
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Кнопка mute
+            IconButton.filled(
+              onPressed: () {
+                setState(() => _isMuted = !_isMuted);
+                widget.onMuteToggle();
+              },
+              icon: Icon(
+                _isMuted ? Icons.volume_off : Icons.volume_up,
+                size: 32,
+              ),
+              style: IconButton.styleFrom(
+                backgroundColor: _isMuted ? Colors.red : Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.all(16),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Закрыть'),
+        ),
+      ],
     );
   }
 }

@@ -380,7 +380,7 @@ class OBSWebSocketService {
             name: name,
             kind: kind,
             isMuted: isMuted,
-            volume: volumeMul,
+            volume: _mulToSlider(volumeMul),
           ));
         } catch (e) {
           debugPrint('Error getting audio info for $name: $e');
@@ -405,11 +405,24 @@ class OBSWebSocketService {
     });
   }
 
-  Future<void> setInputVolume(String inputName, double volumeMul) async {
+  Future<void> setInputVolume(String inputName, double sliderValue) async {
+    // Конвертация позиции слайдера (0-1) в OBS mul: mul = position^4
+    final volumeMul = _sliderToMul(sliderValue);
     await _sendRequest('SetInputVolume', {
       'inputName': inputName,
       'inputVolumeMul': volumeMul,
     });
+  }
+
+  // Конвертация позиции слайдера в OBS multiplier (для соответствия фейдеру OBS)
+  double _sliderToMul(double slider) {
+    return slider * slider * slider * slider; // slider^4
+  }
+
+  // Конвертация OBS multiplier в позицию слайдера
+  double _mulToSlider(double mul) {
+    if (mul <= 0) return 0;
+    return pow(mul, 0.25).toDouble(); // mul^0.25
   }
 
   // ==================== Стрим ====================
