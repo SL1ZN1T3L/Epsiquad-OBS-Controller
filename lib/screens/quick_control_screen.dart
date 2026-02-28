@@ -369,7 +369,7 @@ class _QuickControlScreenState extends State<QuickControlScreen>
 
   Widget _buildEditableGrid(OBSProvider provider) {
     return ReorderableListView.builder(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.only(left: 8, right: 8, top: 8, bottom: 80),
       itemCount: _config.buttons.length,
       onReorder: _reorderButtons,
       itemBuilder: (context, index) {
@@ -524,8 +524,31 @@ class _QuickControlScreenState extends State<QuickControlScreen>
       case QuickButtonType.replayBuffer:
         isActive = provider.status.replayBufferActive;
         activeColor = config.color ?? Colors.teal;
-        onTap = provider.toggleReplayBuffer;
-        onLongPress = provider.saveReplayBuffer;
+        onTap = () {
+          if (isActive) {
+            // Реплей активен - сохраняем буфер
+            HapticFeedback.mediumImpact();
+            provider.saveReplayBuffer();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Реплей сохранён'),
+                  duration: Duration(seconds: 1),
+                ),
+              );
+            }
+          } else {
+            // Реплей не активен - запускаем
+            provider.startReplayBuffer();
+          }
+        };
+        onLongPress = () {
+          if (isActive) {
+            // Зажатие - останавливаем реплей
+            HapticFeedback.heavyImpact();
+            provider.stopReplayBuffer();
+          }
+        };
         break;
 
       case QuickButtonType.screenshot:
@@ -1341,8 +1364,8 @@ class _QuickButton extends StatelessWidget {
     final displayColor = isPaused ? Colors.orange : activeColor;
     final bgColor = isActive
         ? (isPaused
-            ? Colors.orange.withValues(alpha:0.4)
-            : activeColor.withValues(alpha:0.3))
+            ? Colors.orange.withValues(alpha: 0.4)
+            : activeColor.withValues(alpha: 0.3))
         : Colors.grey.shade800;
     final borderColor = isActive ? displayColor : Colors.grey.shade600;
 

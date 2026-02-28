@@ -202,6 +202,9 @@ class OBSProvider extends ChangeNotifier {
           _updateAudioVolume(inputName, sliderValue);
         }
         break;
+      case 'ReplayBufferStateChanged':
+        _handleReplayBufferStateChanged(data);
+        break;
     }
   }
 
@@ -568,6 +571,16 @@ class OBSProvider extends ChangeNotifier {
           duration: _localRecordDuration,
         ),
       );
+
+      // Синхронизируем состояние Replay Buffer
+      try {
+        final replayActive = await _obsService.getReplayBufferStatus();
+        if (replayActive != _status.replayBufferActive) {
+          _status = _status.copyWith(replayBufferActive: replayActive);
+        }
+      } catch (e) {
+        // Replay Buffer может быть не настроен в OBS - это нормально
+      }
     } catch (e) {
       debugPrint('Error syncing status: $e');
     }
@@ -907,6 +920,28 @@ class OBSProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> startReplayBuffer() async {
+    if (!isConnected) return;
+    try {
+      await _obsService.startReplayBuffer();
+      _status = _status.copyWith(replayBufferActive: true);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error starting replay buffer: $e');
+    }
+  }
+
+  Future<void> stopReplayBuffer() async {
+    if (!isConnected) return;
+    try {
+      await _obsService.stopReplayBuffer();
+      _status = _status.copyWith(replayBufferActive: false);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error stopping replay buffer: $e');
+    }
+  }
+
   Future<void> toggleReplayBuffer() async {
     if (!isConnected) return;
     try {
@@ -920,6 +955,22 @@ class OBSProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error toggling replay buffer: $e');
     }
+  }
+
+  /// Обработка события изменения состояния Replay Buffer
+  void _handleReplayBufferStateChanged(Map<String, dynamic> data) {
+    final outputState = data['outputState'] as String?;
+    debugPrint('Replay buffer state changed: $outputState');
+
+    switch (outputState) {
+      case 'OBS_WEBSOCKET_OUTPUT_STARTED':
+        _status = _status.copyWith(replayBufferActive: true);
+        break;
+      case 'OBS_WEBSOCKET_OUTPUT_STOPPED':
+        _status = _status.copyWith(replayBufferActive: false);
+        break;
+    }
+    notifyListeners();
   }
   // ==================== Управление подключениями ====================
 
