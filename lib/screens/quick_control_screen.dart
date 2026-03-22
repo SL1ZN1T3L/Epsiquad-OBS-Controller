@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -26,14 +27,86 @@ class _QuickControlScreenState extends State<QuickControlScreen>
   Timer? _inactivityTimer;
   static const _inactivityDuration = Duration(minutes: 30);
   bool _isInForeground = true;
+  bool _confirmStopStream = true;
+  bool _confirmStopRecord = true;
+  bool _isSyncing = false;
+  double _syncProgress = 0;
+  String _syncStage = '';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadConfig();
+    _loadConfirmSettings();
     WakelockPlus.enable();
     _resetInactivityTimer();
+  }
+
+  Future<void> _loadConfirmSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _confirmStopStream = prefs.getBool('confirmStopStream') ?? true;
+        _confirmStopRecord = prefs.getBool('confirmStopRecord') ?? true;
+      });
+    }
+  }
+
+  Future<bool> _showConfirmDialog(String title, String message) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Подтвердить'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  void _showScenePreview(BuildContext context, OBSProvider provider, String sceneName) {
+    showDialog(
+      context: context,
+      builder: (ctx) => _ScenePreviewDialog(
+        provider: provider,
+        sceneName: sceneName,
+      ),
+    );
+  }
+
+  Future<void> _startFullSync(OBSProvider provider) async {
+    if (_isSyncing || !provider.isConnected) return;
+
+    setState(() {
+      _isSyncing = true;
+      _syncProgress = 0;
+      _syncStage = '';
+    });
+
+    await provider.fullSync((progress, stage) {
+      if (mounted) {
+        setState(() {
+          _syncProgress = progress;
+          _syncStage = stage;
+        });
+      }
+    });
+
+    if (mounted) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      setState(() => _isSyncing = false);
+    }
   }
 
   @override
@@ -177,6 +250,21 @@ class _QuickControlScreenState extends State<QuickControlScreen>
               title:
                   Text(_isEditMode ? 'Редактирование' : 'Быстрое управление'),
               actions: [
+                Consumer<OBSProvider>(
+                  builder: (context, provider, _) => IconButton(
+                    icon: Icon(provider.isConnected ? Icons.sync : Icons.sync_problem),
+                    tooltip: provider.isConnected ? 'Синхронизация' : 'Переподключиться',
+                    onPressed: _isSyncing
+                        ? null
+                        : () {
+                            if (provider.isConnected) {
+                              _startFullSync(provider);
+                            } else if (provider.currentConnection != null) {
+                              provider.connect(provider.currentConnection!);
+                            }
+                          },
+                  ),
+                ),
                 IconButton(
                   icon: const Icon(Icons.account_tree),
                   tooltip: 'Профили',
@@ -257,6 +345,12 @@ class _QuickControlScreenState extends State<QuickControlScreen>
                 isRecording: provider.status.recordStatus.isActive,
                 isStreaming: provider.status.streamStatus.isActive,
               ),
+            ),
+          // Sync overlay
+          if (_isSyncing)
+            _QuickSyncOverlay(
+              progress: _syncProgress,
+              stage: _syncStage,
             ),
         ],
       ),
@@ -463,7 +557,16 @@ class _QuickControlScreenState extends State<QuickControlScreen>
         sublabel =
             isActive ? provider.status.recordStatus.durationString : null;
         activeColor = config.color ?? Colors.red;
-        onTap = provider.toggleRecord;
+        onTap = () async {
+          if (isActive && _confirmStopRecord) {
+            final confirmed = await _showConfirmDialog(
+              'Остановить запись?',
+              'Запись идёт ${provider.status.recordStatus.durationString}. Точно остановить?',
+            );
+            if (!confirmed) return;
+          }
+          provider.toggleRecord();
+        };
         onLongPress = provider.toggleRecordPause;
         break;
 
@@ -472,7 +575,16 @@ class _QuickControlScreenState extends State<QuickControlScreen>
         sublabel =
             isActive ? provider.status.streamStatus.durationString : null;
         activeColor = config.color ?? Colors.red;
-        onTap = provider.toggleStream;
+        onTap = () async {
+          if (isActive && _confirmStopStream) {
+            final confirmed = await _showConfirmDialog(
+              'Остановить стрим?',
+              'Стрим идёт ${provider.status.streamStatus.durationString}. Точно остановить?',
+            );
+            if (!confirmed) return;
+          }
+          provider.toggleStream();
+        };
         break;
 
       case QuickButtonType.scene:
@@ -483,6 +595,7 @@ class _QuickControlScreenState extends State<QuickControlScreen>
               );
           isActive = scene?.isCurrentProgram ?? false;
           onTap = () => provider.switchScene(config.targetName!);
+          onLongPress = () => _showScenePreview(context, provider, config.targetName!);
         }
         break;
 
@@ -542,9 +655,13 @@ class _QuickControlScreenState extends State<QuickControlScreen>
             provider.startReplayBuffer();
           }
         };
-        onLongPress = () {
+        onLongPress = () async {
           if (isActive) {
-            // Зажатие - останавливаем реплей
+            final confirmed = await _showConfirmDialog(
+              'Остановить Replay Buffer?',
+              'Replay Buffer активен. Точно остановить?',
+            );
+            if (!confirmed) return;
             HapticFeedback.heavyImpact();
             provider.stopReplayBuffer();
           }
@@ -1432,6 +1549,204 @@ class _QuickButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ScenePreviewDialog extends StatefulWidget {
+  final OBSProvider provider;
+  final String sceneName;
+
+  const _ScenePreviewDialog({
+    required this.provider,
+    required this.sceneName,
+  });
+
+  @override
+  State<_ScenePreviewDialog> createState() => _ScenePreviewDialogState();
+}
+
+class _ScenePreviewDialogState extends State<_ScenePreviewDialog> {
+  String? _imageData;
+  bool _isLoading = true;
+  bool _active = true;
+  double _fps = 0;
+  static const _frameDuration = Duration(milliseconds: 33); // ~30fps
+
+  @override
+  void initState() {
+    super.initState();
+    _runPreviewLoop();
+  }
+
+  @override
+  void dispose() {
+    _active = false;
+    super.dispose();
+  }
+
+  Future<void> _runPreviewLoop() async {
+    while (_active && mounted) {
+      final sw = Stopwatch()..start();
+      final data = await widget.provider.getScenePreview(widget.sceneName);
+      sw.stop();
+
+      if (!_active || !mounted) break;
+
+      final elapsed = sw.elapsed;
+      if (elapsed < _frameDuration) {
+        await Future.delayed(_frameDuration - elapsed);
+      }
+
+      if (!_active || !mounted) break;
+
+      final totalMs = sw.elapsedMilliseconds > 0
+          ? sw.elapsedMilliseconds.clamp(_frameDuration.inMilliseconds, 10000)
+          : _frameDuration.inMilliseconds;
+
+      setState(() {
+        _imageData = data;
+        _isLoading = false;
+        _fps = 1000 / totalMs;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.sceneName,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                if (!_isLoading)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Text(
+                      '${_fps.toStringAsFixed(0)} fps',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.all(48),
+              child: CircularProgressIndicator(),
+            )
+          else if (_imageData != null)
+            ClipRRect(
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(12),
+                bottomRight: Radius.circular(12),
+              ),
+              child: Image.memory(
+                base64Decode(_imageData!.split(',').last),
+                fit: BoxFit.contain,
+                gaplessPlayback: true,
+              ),
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.all(48),
+              child: Text('Не удалось загрузить превью'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickSyncOverlay extends StatelessWidget {
+  final double progress;
+  final String stage;
+
+  const _QuickSyncOverlay({
+    required this.progress,
+    required this.stage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = (progress * 100).toInt();
+
+    return Material(
+      color: Colors.black.withValues(alpha: 0.85),
+      child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 120,
+                height: 120,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 120,
+                      height: 120,
+                      child: CircularProgressIndicator(
+                        value: progress,
+                        strokeWidth: 6,
+                        backgroundColor: Colors.grey.shade800,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          progress >= 1.0 ? Colors.green : Colors.blue,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '$percent%',
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+              const Text(
+                'Синхронизация...',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                ),
+              ),
+              if (stage.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  stage,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade400,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
     );
   }
 }

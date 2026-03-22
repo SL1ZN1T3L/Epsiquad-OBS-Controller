@@ -241,3 +241,54 @@ class OBSStatus {
   @override
   int get hashCode => Object.hash(isConnected, streamStatus, recordStatus);
 }
+
+// Статистика OBS
+class OBSStats {
+  final double cpuUsage;
+  final double memoryUsage;
+  final double activeFps;
+  final int renderTotalFrames;
+  final int renderSkippedFrames;
+  final int outputTotalFrames;
+  final int outputSkippedFrames;
+  final int webSocketSessionIncomingMessages;
+  final int webSocketSessionOutgoingMessages;
+  final double availableDiskSpace; // MB
+
+  OBSStats({
+    this.cpuUsage = 0,
+    this.memoryUsage = 0,
+    this.activeFps = 0,
+    this.renderTotalFrames = 0,
+    this.renderSkippedFrames = 0,
+    this.outputTotalFrames = 0,
+    this.outputSkippedFrames = 0,
+    this.webSocketSessionIncomingMessages = 0,
+    this.webSocketSessionOutgoingMessages = 0,
+    this.availableDiskSpace = 0,
+  });
+
+  factory OBSStats.fromJson(Map<String, dynamic> json) {
+    return OBSStats(
+      cpuUsage: (json['cpuUsage'] as num?)?.toDouble() ?? 0,
+      memoryUsage: (json['memoryUsage'] as num?)?.toDouble() ?? 0,
+      activeFps: (json['activeFps'] as num?)?.toDouble() ?? 0,
+      renderTotalFrames: json['renderTotalFrames'] as int? ?? 0,
+      renderSkippedFrames: json['renderSkippedFrames'] as int? ?? 0,
+      outputTotalFrames: json['outputTotalFrames'] as int? ?? 0,
+      outputSkippedFrames: json['outputSkippedFrames'] as int? ?? 0,
+      webSocketSessionIncomingMessages:
+          json['webSocketSessionIncomingMessages'] as int? ?? 0,
+      webSocketSessionOutgoingMessages:
+          json['webSocketSessionOutgoingMessages'] as int? ?? 0,
+      availableDiskSpace:
+          (json['availableDiskSpace'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  double get renderSkipPercent =>
+      renderTotalFrames > 0 ? (renderSkippedFrames / renderTotalFrames) * 100 : 0;
+
+  double get outputSkipPercent =>
+      outputTotalFrames > 0 ? (outputSkippedFrames / outputTotalFrames) * 100 : 0;
+}

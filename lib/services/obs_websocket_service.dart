@@ -578,6 +578,24 @@ class OBSWebSocketService {
     return imageFilePath;
   }
 
+  /// Возвращает скриншот источника в base64 (для превью в приложении)
+  Future<String?> getSourceScreenshotBase64({
+    required String sourceName,
+    String imageFormat = 'jpg',
+    int? imageWidth,
+    int? imageHeight,
+    int imageCompressionQuality = 60,
+  }) async {
+    final response = await _sendRequest('GetSourceScreenshot', {
+      'sourceName': sourceName,
+      'imageFormat': imageFormat,
+      if (imageWidth != null) 'imageWidth': imageWidth,
+      if (imageHeight != null) 'imageHeight': imageHeight,
+      'imageCompressionQuality': imageCompressionQuality,
+    });
+    return response['d']?['responseData']?['imageData'] as String?;
+  }
+
   void dispose() {
     disconnect();
     _eventController.close();

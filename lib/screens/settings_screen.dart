@@ -126,6 +126,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 24),
 
+          // Секция подтверждений
+          _buildSectionHeader('Подтверждения'),
+          const SizedBox(height: 8),
+
+          const _ConfirmationSettingsCard(),
+
+          const SizedBox(height: 24),
+
+          // Секция напоминаний
+          _buildSectionHeader('Напоминания'),
+          const SizedBox(height: 8),
+
+          const _ReminderSettingsCard(),
+
+          const SizedBox(height: 24),
+
           // Секция скринсейвера
           _buildSectionHeader('Скринсейвер'),
           const SizedBox(height: 8),
@@ -1169,5 +1185,166 @@ class _UpdateSettingsCardState extends State<_UpdateSettingsCard> {
       await widget.updateService.setUpdateChannel(selected);
       setState(() => _channel = selected);
     }
+  }
+}
+
+class _ConfirmationSettingsCard extends StatefulWidget {
+  const _ConfirmationSettingsCard();
+
+  @override
+  State<_ConfirmationSettingsCard> createState() =>
+      _ConfirmationSettingsCardState();
+}
+
+class _ConfirmationSettingsCardState extends State<_ConfirmationSettingsCard> {
+  bool _confirmStream = true;
+  bool _confirmRecord = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _confirmStream = prefs.getBool('confirmStopStream') ?? true;
+        _confirmRecord = prefs.getBool('confirmStopRecord') ?? true;
+      });
+    }
+  }
+
+  Future<void> _save(String key, bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Column(
+        children: [
+          SwitchListTile(
+            title: const Text('Подтверждение остановки стрима'),
+            subtitle: const Text('Диалог перед остановкой стрима'),
+            value: _confirmStream,
+            onChanged: (v) {
+              setState(() => _confirmStream = v);
+              _save('confirmStopStream', v);
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Подтверждение остановки записи'),
+            subtitle: const Text('Диалог перед остановкой записи'),
+            value: _confirmRecord,
+            onChanged: (v) {
+              setState(() => _confirmRecord = v);
+              _save('confirmStopRecord', v);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReminderSettingsCard extends StatefulWidget {
+  const _ReminderSettingsCard();
+
+  @override
+  State<_ReminderSettingsCard> createState() => _ReminderSettingsCardState();
+}
+
+class _ReminderSettingsCardState extends State<_ReminderSettingsCard> {
+  int _interval = 0;
+  String _message = 'Напоминание';
+  final _messageController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _interval = prefs.getInt('reminderInterval') ?? 0;
+        _message = prefs.getString('reminderMessage') ?? 'Напоминание';
+        _messageController.text = _message;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('reminderInterval', _interval);
+    await prefs.setString('reminderMessage', _message);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Интервал напоминаний во время стрима',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<int>(
+              initialValue: _interval,
+              decoration: InputDecoration(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                isDense: true,
+              ),
+              items: const [
+                DropdownMenuItem(value: 0, child: Text('Выключено')),
+                DropdownMenuItem(value: 15, child: Text('Каждые 15 мин')),
+                DropdownMenuItem(value: 30, child: Text('Каждые 30 мин')),
+                DropdownMenuItem(value: 60, child: Text('Каждый час')),
+                DropdownMenuItem(value: 120, child: Text('Каждые 2 часа')),
+              ],
+              onChanged: (v) {
+                setState(() => _interval = v ?? 0);
+                _save();
+              },
+            ),
+            if (_interval > 0) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _messageController,
+                decoration: InputDecoration(
+                  labelText: 'Текст напоминания',
+                  hintText: 'Не забудь рекламу!',
+                  prefixIcon: const Icon(Icons.message),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
+                onChanged: (v) {
+                  _message = v;
+                  _save();
+                },
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }

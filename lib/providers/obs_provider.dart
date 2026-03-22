@@ -24,9 +24,16 @@ class OBSProvider extends ChangeNotifier {
   // Кэш items для всех сцен (для Quick Control)
   final Map<String, List<OBSSceneItem>> _allSceneItems = {};
 
+  // Статистика OBS
+  OBSStats _stats = OBSStats();
+
   Timer? _statusTimer;
   Timer? _localTimeTimer; // Таймер для локального счётчика времени
   Timer? _debounceTimer; // Debounce для группировки частых событий
+  Timer? _reminderTimer; // Таймер для напоминаний о стриме
+  Timer? _reconnectTimer; // Таймер автоматического переподключения
+  int _reconnectAttempt = 0;
+  bool _manualDisconnect = false; // Флаг ручного отключения
 
   // Локальные счётчики времени (обновляются каждую секунду на устройстве)
   Duration _localStreamDuration = Duration.zero;
@@ -55,6 +62,10 @@ class OBSProvider extends ChangeNotifier {
   List<OBSAudioSource> get audioSources => _audioSources;
   String? get selectedSceneForItems => _selectedSceneForItems;
   Map<String, List<OBSSceneItem>> get allSceneItems => _allSceneItems;
+  OBSStats get stats => _stats;
+
+  // Callback для напоминаний (устанавливается из UI)
+  void Function(String message)? onReminder;
 
   Future<void> _init() async {
     await _foregroundService.init();
@@ -82,6 +93,7 @@ class OBSProvider extends ChangeNotifier {
     debugPrint('Has password: ${connection.password != null}');
     if (_isConnecting) return false;
 
+    _manualDisconnect = false;
     _isConnecting = true;
     _connectionError = null;
     _currentConnection = connection;
@@ -103,6 +115,9 @@ class OBSProvider extends ChangeNotifier {
   }
 
   Future<void> disconnect() async {
+    _manualDisconnect = true;
+    _reconnectTimer?.cancel();
+    _reconnectAttempt = 0;
     await _obsService.disconnect();
     await _foregroundService.stop();
     _statusTimer?.cancel();
@@ -125,6 +140,8 @@ class OBSProvider extends ChangeNotifier {
     debugPrint('=== ПОДКЛЮЧЕНИЕ УСПЕШНО ===');
     _status = _status.copyWith(isConnected: true);
     _connectionError = null;
+    _reconnectTimer?.cancel();
+    _reconnectAttempt = 0;
 
     if (_currentConnection != null) {
       final updated =
@@ -152,6 +169,37 @@ class OBSProvider extends ChangeNotifier {
     _localTimeTimer?.cancel();
     _foregroundService.sendStatus('Отключено');
     notifyListeners();
+
+    _scheduleReconnect();
+  }
+
+  void _scheduleReconnect() {
+    if (_manualDisconnect || _currentConnection == null) return;
+
+    _reconnectTimer?.cancel();
+    _reconnectAttempt++;
+
+    // Exponential backoff: 3s, 6s, 12s, 24s, 30s (max)
+    final delaySec = (3 * (1 << (_reconnectAttempt - 1).clamp(0, 3))).clamp(3, 30);
+    debugPrint('Auto-reconnect: attempt $_reconnectAttempt in ${delaySec}s');
+
+    _connectionError = 'Переподключение через ${delaySec}с...';
+    notifyListeners();
+
+    _reconnectTimer = Timer(Duration(seconds: delaySec), () async {
+      if (_manualDisconnect || isConnected) return;
+
+      debugPrint('Auto-reconnect: trying...');
+      final success = await connect(_currentConnection!);
+      if (!success && !_manualDisconnect) {
+        _scheduleReconnect();
+      }
+    });
+  }
+
+  void cancelReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectAttempt = 0;
   }
 
   void _onError(String error) {
@@ -226,6 +274,45 @@ class OBSProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error fetching initial data: $e');
     }
+  }
+
+  /// Полная синхронизация с OBS с отчётом о прогрессе (0.0 - 1.0)
+  Future<void> fullSync(void Function(double progress, String stage)? onProgress) async {
+    if (!isConnected) return;
+
+    onProgress?.call(0.0, 'Версия OBS');
+    try {
+      final version = await _obsService.getVersion();
+      _status = _status.copyWith(
+        obsVersion: version['obsVersion'] as String?,
+        websocketVersion: version['obsWebSocketVersion'] as String?,
+      );
+    } catch (e) {
+      debugPrint('Sync error (version): $e');
+    }
+
+    onProgress?.call(0.15, 'Сцены');
+    await _fetchScenes();
+
+    onProgress?.call(0.35, 'Источники сцен');
+    await _loadAllSceneItems();
+
+    onProgress?.call(0.55, 'Аудио');
+    await _fetchAudioSources();
+
+    onProgress?.call(0.75, 'Стрим и запись');
+    await _syncStatusFromOBS();
+
+    onProgress?.call(0.90, 'Статистика');
+    try {
+      final statsData = await _obsService.getStats();
+      _stats = OBSStats.fromJson(statsData);
+    } catch (e) {
+      debugPrint('Sync error (stats): $e');
+    }
+
+    onProgress?.call(1.0, 'Готово');
+    notifyListeners();
   }
 
   Future<void> _fetchScenes() async {
@@ -580,6 +667,14 @@ class OBSProvider extends ChangeNotifier {
         }
       } catch (e) {
         // Replay Buffer может быть не настроен в OBS - это нормально
+      }
+
+      // Синхронизируем статистику
+      try {
+        final statsData = await _obsService.getStats();
+        _stats = OBSStats.fromJson(statsData);
+      } catch (e) {
+        debugPrint('Error fetching stats: $e');
       }
     } catch (e) {
       debugPrint('Error syncing status: $e');
@@ -1011,10 +1106,51 @@ class OBSProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ==================== Превью сцены ====================
+
+  Future<String?> getScenePreview(String sceneName, {int? width, int? quality}) async {
+    if (!isConnected) return null;
+    try {
+      return await _obsService.getSourceScreenshotBase64(
+        sourceName: sceneName,
+        imageWidth: width ?? 480,
+        imageCompressionQuality: quality ?? 30,
+      );
+    } catch (e) {
+      debugPrint('Error getting scene preview: $e');
+      return null;
+    }
+  }
+
+  // ==================== Напоминания о стриме ====================
+
+  void startStreamReminders(int intervalMinutes, String message) {
+    _reminderTimer?.cancel();
+
+    if (intervalMinutes <= 0) return;
+
+    _reminderTimer = Timer.periodic(
+      Duration(minutes: intervalMinutes),
+      (_) {
+        if (_status.streamStatus.isActive) {
+          final duration = _status.streamStatus.durationString;
+          onReminder?.call('$message (Стрим: $duration)');
+        }
+      },
+    );
+  }
+
+  void stopStreamReminders() {
+    _reminderTimer?.cancel();
+    _reminderTimer = null;
+  }
+
   @override
   void dispose() {
     _statusTimer?.cancel();
     _debounceTimer?.cancel();
+    _reminderTimer?.cancel();
+    _reconnectTimer?.cancel();
     _obsService.dispose();
     super.dispose();
   }

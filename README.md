@@ -206,9 +206,13 @@ GPL-3.0 — см. [LICENSE](LICENSE)
 
 ## 👤 Автор
 
-**Epsiquad**
+**Epsiquad** — концепция, дизайн, управление проектом
 
 - GitHub: [@SL1ZN1T3L](https://github.com/SL1ZN1T3L)
+
+## 👥 Участники
+
+**Claude** — написание комитов
 
 ---
 

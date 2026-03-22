@@ -5,12 +5,14 @@ import '../models/models.dart';
 class SceneGrid extends StatelessWidget {
   final List<OBSScene> scenes;
   final Function(OBSScene) onSceneTap;
+  final Function(OBSScene)? onSceneLongPress;
   final int columns;
 
   const SceneGrid({
     super.key,
     required this.scenes,
     required this.onSceneTap,
+    this.onSceneLongPress,
     this.columns = 3,
   });
 
@@ -23,6 +25,7 @@ class SceneGrid extends StatelessWidget {
     }
 
     return GridView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(8),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: columns,
@@ -41,6 +44,12 @@ class SceneGrid extends StatelessWidget {
             HapticFeedback.mediumImpact();
             onSceneTap(scene);
           },
+          onLongPress: onSceneLongPress != null
+              ? () {
+                  HapticFeedback.heavyImpact();
+                  onSceneLongPress!(scene);
+                }
+              : null,
         );
       },
     );
@@ -51,12 +60,14 @@ class _AnimatedSceneCard extends StatefulWidget {
   final OBSScene scene;
   final int index;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const _AnimatedSceneCard({
     super.key,
     required this.scene,
     required this.index,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -106,6 +117,7 @@ class _AnimatedSceneCardState extends State<_AnimatedSceneCard>
           onTapUp: (_) => setState(() => _isPressed = false),
           onTapCancel: () => setState(() => _isPressed = false),
           onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
           child: AnimatedScale(
             scale: _isPressed ? 0.95 : 1.0,
             duration: const Duration(milliseconds: 100),

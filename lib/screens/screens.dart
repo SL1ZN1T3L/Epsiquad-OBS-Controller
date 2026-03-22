@@ -4,3 +4,4 @@ export 'quick_control_screen.dart';
 export 'about_screen.dart';
 export 'profiles_screen.dart';
 export 'settings_screen.dart';
+export 'stats_screen.dart';
