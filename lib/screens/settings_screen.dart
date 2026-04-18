@@ -12,6 +12,8 @@ import '../services/update_service.dart';
 import '../providers/obs_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'log_screen.dart';
+import '../services/log_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -147,6 +149,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 8),
 
           _ScreenSaverSettingsCard(),
+
+          const SizedBox(height: 24),
+
+          // Секция логов
+          _buildSectionHeader('Диагностика'),
+          const SizedBox(height: 8),
+
+          const _LogSettingsCard(),
 
           const SizedBox(height: 24),
 
@@ -358,7 +368,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _importBackup() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['json'],
       );
@@ -1344,6 +1354,76 @@ class _ReminderSettingsCardState extends State<_ReminderSettingsCard> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _LogSettingsCard extends StatefulWidget {
+  const _LogSettingsCard();
+
+  @override
+  State<_LogSettingsCard> createState() => _LogSettingsCardState();
+}
+
+class _LogSettingsCardState extends State<_LogSettingsCard> {
+  bool _enabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _enabled = prefs.getBool('loggingEnabled') ?? true;
+      });
+    }
+  }
+
+  Future<void> _toggle(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('loggingEnabled', value);
+    LogService.instance.enabled = value;
+    if (!value) {
+      LogService.instance.clear();
+    }
+    setState(() => _enabled = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Column(
+        children: [
+          SwitchListTile(
+            secondary: Icon(
+              Icons.article,
+              color: _enabled ? Colors.cyan : Colors.grey,
+            ),
+            title: const Text('Журнал событий'),
+            subtitle: Text(
+              _enabled
+                  ? '${LogService.instance.count} записей'
+                  : 'Отключено — не расходует память',
+            ),
+            value: _enabled,
+            onChanged: _toggle,
+          ),
+          if (_enabled)
+            ListTile(
+              leading: const SizedBox(width: 24),
+              title: const Text('Открыть журнал'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LogScreen()),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import '../models/models.dart';
 import '../services/services.dart';
 
+const _tag = 'OBS';
+
 class OBSProvider extends ChangeNotifier {
   final OBSWebSocketService _obsService = OBSWebSocketService();
   final StorageService _storage;
@@ -19,34 +21,55 @@ class OBSProvider extends ChangeNotifier {
   List<OBSScene> _scenes = [];
   List<OBSSceneItem> _currentSceneItems = [];
   List<OBSAudioSource> _audioSources = [];
-  String? _selectedSceneForItems; // Выбранная сцена для просмотра источников
+  String? _selectedSceneForItems;
 
-  // Кэш items для всех сцен (для Quick Control)
   final Map<String, List<OBSSceneItem>> _allSceneItems = {};
 
-  // Статистика OBS
   OBSStats _stats = OBSStats();
 
-  Timer? _statusTimer;
-  Timer? _localTimeTimer; // Таймер для локального счётчика времени
-  Timer? _debounceTimer; // Debounce для группировки частых событий
-  Timer? _reminderTimer; // Таймер для напоминаний о стриме
-  Timer? _reconnectTimer; // Таймер автоматического переподключения
-  int _reconnectAttempt = 0;
-  bool _manualDisconnect = false; // Флаг ручного отключения
+  // Volume meters: inputName -> [channel levels 0.0-1.0]
+  final Map<String, List<double>> _volumeLevels = {};
+  late final StreamController<Map<String, List<double>>> _volumeController;
+  int _volumeListenerCount = 0;
 
-  // Локальные счётчики времени (обновляются каждую секунду на устройстве)
+  Timer? _statusTimer;
+  Timer? _localTimeTimer;
+  Timer? _debounceTimer;
+  Timer? _reminderTimer;
+  Timer? _reconnectTimer;
+  Timer? _reconnectCountdownTimer;
+  Timer? _statsSnapshotTimer;
+  int _reconnectAttempt = 0;
+  bool _manualDisconnect = false;
+
   Duration _localStreamDuration = Duration.zero;
   Duration _localRecordDuration = Duration.zero;
   DateTime? _streamStartTime;
   DateTime? _recordStartTime;
-  DateTime? _recordPauseTime; // Когда была поставлена пауза
-  Duration _recordPausedDuration = Duration.zero; // Суммарное время паузы
+  DateTime? _recordPauseTime;
+  Duration _recordPausedDuration = Duration.zero;
 
-  // Флаг блокировки от быстрых повторных нажатий
   DateTime? _lastRecordPauseAction;
 
   OBSProvider(this._storage) {
+    _volumeController = StreamController<Map<String, List<double>>>.broadcast(
+      onListen: () {
+        _volumeListenerCount++;
+        if (_volumeListenerCount == 1) {
+          // Первый слушатель — включаем InputVolumeMeters
+          _obsService.reidentify(66047); // 511 | 65536
+        }
+      },
+      onCancel: () {
+        _volumeListenerCount--;
+        if (_volumeListenerCount <= 0) {
+          _volumeListenerCount = 0;
+          _volumeLevels.clear();
+          // Нет слушателей — отключаем InputVolumeMeters
+          _obsService.reidentify(511);
+        }
+      },
+    );
     _init();
   }
 
@@ -63,8 +86,9 @@ class OBSProvider extends ChangeNotifier {
   String? get selectedSceneForItems => _selectedSceneForItems;
   Map<String, List<OBSSceneItem>> get allSceneItems => _allSceneItems;
   OBSStats get stats => _stats;
+  Map<String, List<double>> get volumeLevels => _volumeLevels;
+  Stream<Map<String, List<double>>> get volumeStream => _volumeController.stream;
 
-  // Callback для напоминаний (устанавливается из UI)
   void Function(String message)? onReminder;
 
   Future<void> _init() async {
@@ -80,6 +104,7 @@ class OBSProvider extends ChangeNotifier {
     if (autoConnect) {
       final defaultConnection = await _storage.getDefaultConnection();
       if (defaultConnection != null) {
+        log.i(_tag, 'Auto-connecting to ${defaultConnection.name}');
         connect(defaultConnection);
       }
     }
@@ -88,9 +113,7 @@ class OBSProvider extends ChangeNotifier {
   }
 
   Future<bool> connect(OBSConnection connection) async {
-    debugPrint('=== НАЧАЛО ПОДКЛЮЧЕНИЯ ===');
-    debugPrint('Connection: ${connection.host}:${connection.port}');
-    debugPrint('Has password: ${connection.password != null}');
+    log.i(_tag, 'Connecting to ${connection.name} (${connection.host}:${connection.port})');
     if (_isConnecting) return false;
 
     _manualDisconnect = false;
@@ -103,10 +126,12 @@ class OBSProvider extends ChangeNotifier {
       final success = await _obsService.connect(connection);
       if (!success) {
         _connectionError = 'Не удалось подключиться';
+        log.w(_tag, 'Connection failed to ${connection.name}');
       }
       return success;
     } catch (e) {
       _connectionError = e.toString();
+      log.e(_tag, 'Connection error', e.toString());
       return false;
     } finally {
       _isConnecting = false;
@@ -117,6 +142,7 @@ class OBSProvider extends ChangeNotifier {
   Future<void> disconnect() async {
     _manualDisconnect = true;
     _reconnectTimer?.cancel();
+    _reconnectCountdownTimer?.cancel();
     _reconnectAttempt = 0;
     await _obsService.disconnect();
     await _foregroundService.stop();
@@ -126,21 +152,22 @@ class OBSProvider extends ChangeNotifier {
     _scenes = [];
     _currentSceneItems = [];
     _audioSources = [];
-    // Сбрасываем локальные счётчики
     _localStreamDuration = Duration.zero;
     _localRecordDuration = Duration.zero;
     _streamStartTime = null;
     _recordStartTime = null;
     _recordPauseTime = null;
     _recordPausedDuration = Duration.zero;
+    log.i(_tag, 'Disconnected manually');
     notifyListeners();
   }
 
   void _onConnected() async {
-    debugPrint('=== ПОДКЛЮЧЕНИЕ УСПЕШНО ===');
+    log.i(_tag, 'Connected successfully');
     _status = _status.copyWith(isConnected: true);
     _connectionError = null;
     _reconnectTimer?.cancel();
+    _reconnectCountdownTimer?.cancel();
     _reconnectAttempt = 0;
 
     if (_currentConnection != null) {
@@ -163,6 +190,7 @@ class OBSProvider extends ChangeNotifier {
   }
 
   void _onDisconnected(String reason) {
+    log.w(_tag, 'Disconnected: $reason');
     _status = _status.copyWith(isConnected: false);
     _connectionError = reason;
     _statusTimer?.cancel();
@@ -177,19 +205,34 @@ class OBSProvider extends ChangeNotifier {
     if (_manualDisconnect || _currentConnection == null) return;
 
     _reconnectTimer?.cancel();
+    _reconnectCountdownTimer?.cancel();
     _reconnectAttempt++;
 
-    // Exponential backoff: 3s, 6s, 12s, 24s, 30s (max)
     final delaySec = (3 * (1 << (_reconnectAttempt - 1).clamp(0, 3))).clamp(3, 30);
-    debugPrint('Auto-reconnect: attempt $_reconnectAttempt in ${delaySec}s');
+    log.i(_tag, 'Auto-reconnect attempt $_reconnectAttempt in ${delaySec}s');
 
-    _connectionError = 'Переподключение через ${delaySec}с...';
+    int remaining = delaySec;
+    _connectionError = 'Переподключение через $remainingс... (попытка $_reconnectAttempt)';
     notifyListeners();
 
+    _reconnectCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      remaining--;
+      if (remaining <= 0 || _manualDisconnect || isConnected) {
+        timer.cancel();
+        return;
+      }
+      _connectionError = 'Переподключение через $remainingс... (попытка $_reconnectAttempt)';
+      notifyListeners();
+    });
+
     _reconnectTimer = Timer(Duration(seconds: delaySec), () async {
+      _reconnectCountdownTimer?.cancel();
       if (_manualDisconnect || isConnected) return;
 
-      debugPrint('Auto-reconnect: trying...');
+      _connectionError = 'Подключение...';
+      notifyListeners();
+
+      log.i(_tag, 'Auto-reconnect: trying...');
       final success = await connect(_currentConnection!);
       if (!success && !_manualDisconnect) {
         _scheduleReconnect();
@@ -199,24 +242,25 @@ class OBSProvider extends ChangeNotifier {
 
   void cancelReconnect() {
     _reconnectTimer?.cancel();
+    _reconnectCountdownTimer?.cancel();
     _reconnectAttempt = 0;
   }
 
   void _onError(String error) {
-    debugPrint('=== ОШИБКА ПОДКЛЮЧЕНИЯ: $error ===');
-    debugPrint('OBS Error: $error');
+    log.e(_tag, 'Error: $error');
     _connectionError = error;
     notifyListeners();
   }
 
   void _handleEvent(String eventType, Map<String, dynamic> data) {
-    // Убраны частые debug логи для производительности
     switch (eventType) {
       case 'CurrentProgramSceneChanged':
         final sceneName = data['sceneName'] as String?;
+        log.d(_tag, 'Scene changed: $sceneName');
         _updateCurrentScene(sceneName);
         break;
       case 'SceneListChanged':
+        log.d(_tag, 'Scene list changed');
         _fetchScenes();
         break;
       case 'SceneItemEnableStateChanged':
@@ -224,7 +268,6 @@ class OBSProvider extends ChangeNotifier {
         final sceneItemId = data['sceneItemId'] as int?;
         final enabled = data['sceneItemEnabled'] as bool?;
         if (sceneName != null && sceneItemId != null && enabled != null) {
-          // Быстрое локальное обновление без запроса к серверу
           _updateSceneItemLocally(sceneName, sceneItemId, enabled);
         }
         break;
@@ -245,7 +288,6 @@ class OBSProvider extends ChangeNotifier {
         final inputName = data['inputName'] as String?;
         final volumeMul = (data['inputVolumeMul'] as num?)?.toDouble();
         if (inputName != null && volumeMul != null) {
-          // Конвертируем mul в позицию слайдера (mul^0.25)
           final sliderValue = volumeMul > 0 ? pow(volumeMul, 0.25).toDouble() : 0.0;
           _updateAudioVolume(inputName, sliderValue);
         }
@@ -253,32 +295,35 @@ class OBSProvider extends ChangeNotifier {
       case 'ReplayBufferStateChanged':
         _handleReplayBufferStateChanged(data);
         break;
+      case 'InputVolumeMeters':
+        _handleVolumeMeterEvent(data);
+        break;
     }
   }
 
   Future<void> _fetchInitialData() async {
-    debugPrint('Fetching initial data...');
+    log.i(_tag, 'Fetching initial data...');
     try {
       final version = await _obsService.getVersion();
-      debugPrint('OBS Version: $version');
+      log.i(_tag, 'OBS v${version['obsVersion']}, WS v${version['obsWebSocketVersion']}');
       _status = _status.copyWith(
         obsVersion: version['obsVersion'] as String?,
         websocketVersion: version['obsWebSocketVersion'] as String?,
       );
 
       await _fetchScenes();
-      await _syncStatusFromOBS(); // Синхронизируем состояние стрима/записи
+      await _syncStatusFromOBS();
       await _fetchAudioSources();
 
       notifyListeners();
     } catch (e) {
-      debugPrint('Error fetching initial data: $e');
+      log.e(_tag, 'Error fetching initial data', e.toString());
     }
   }
 
-  /// Полная синхронизация с OBS с отчётом о прогрессе (0.0 - 1.0)
   Future<void> fullSync(void Function(double progress, String stage)? onProgress) async {
     if (!isConnected) return;
+    log.i(_tag, 'Starting full sync...');
 
     onProgress?.call(0.0, 'Версия OBS');
     try {
@@ -288,7 +333,7 @@ class OBSProvider extends ChangeNotifier {
         websocketVersion: version['obsWebSocketVersion'] as String?,
       );
     } catch (e) {
-      debugPrint('Sync error (version): $e');
+      log.e(_tag, 'Sync error (version)', e.toString());
     }
 
     onProgress?.call(0.15, 'Сцены');
@@ -308,18 +353,17 @@ class OBSProvider extends ChangeNotifier {
       final statsData = await _obsService.getStats();
       _stats = OBSStats.fromJson(statsData);
     } catch (e) {
-      debugPrint('Sync error (stats): $e');
+      log.e(_tag, 'Sync error (stats)', e.toString());
     }
 
     onProgress?.call(1.0, 'Готово');
+    log.i(_tag, 'Full sync completed');
     notifyListeners();
   }
 
   Future<void> _fetchScenes() async {
     try {
-      debugPrint('Fetching scenes...');
       _scenes = await _obsService.getSceneList();
-      debugPrint('Scenes loaded: ${_scenes.map((s) => s.name).toList()}');
       notifyListeners();
 
       final currentScene = _scenes.firstWhere(
@@ -329,46 +373,39 @@ class OBSProvider extends ChangeNotifier {
       );
       await _fetchSceneItems(currentScene.name);
 
-      // Загружаем items для всех сцен в кэш (для Quick Control)
       await _loadAllSceneItems();
     } catch (e) {
-      debugPrint('Error fetching scenes: $e');
+      log.e(_tag, 'Error fetching scenes', e.toString());
     }
   }
 
   Future<void> _fetchSceneItems(String sceneName) async {
     try {
-      debugPrint('Fetching scene items for: $sceneName');
       final items = await _obsService.getSceneItemList(sceneName);
       _currentSceneItems = items;
-      _allSceneItems[sceneName] = items; // Обновляем кэш
-      debugPrint('Scene items loaded: ${_currentSceneItems.length}');
+      _allSceneItems[sceneName] = items;
       notifyListeners();
     } catch (e) {
-      debugPrint('Error fetching scene items: $e');
+      log.e(_tag, 'Error fetching scene items for $sceneName', e.toString());
     }
   }
 
-  /// Загрузка items для всех сцен в кэш
   Future<void> _loadAllSceneItems() async {
     for (final scene in _scenes) {
       if (!_allSceneItems.containsKey(scene.name)) {
         try {
           final items = await _obsService.getSceneItemList(scene.name);
           _allSceneItems[scene.name] = items;
-          debugPrint('Scene items for ${scene.name}: ${items.length}');
         } catch (e) {
-          debugPrint('Error loading items for ${scene.name}: $e');
+          log.w(_tag, 'Error loading items for ${scene.name}', e.toString());
         }
       }
     }
     notifyListeners();
   }
 
-  /// Быстрое локальное обновление состояния item без запроса к серверу
   void _updateSceneItemLocally(
       String sceneName, int sceneItemId, bool enabled) {
-    // Обновляем в кэше всех сцен
     final items = _allSceneItems[sceneName];
     if (items != null) {
       final index = items.indexWhere((i) => i.sceneItemId == sceneItemId);
@@ -378,7 +415,6 @@ class OBSProvider extends ChangeNotifier {
       }
     }
 
-    // Обновляем в текущих items если это та же сцена
     final currentIndex =
         _currentSceneItems.indexWhere((i) => i.sceneItemId == sceneItemId);
     if (currentIndex != -1) {
@@ -389,7 +425,6 @@ class OBSProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Получить состояние видимости источника в конкретной сцене
   bool? getSceneItemEnabled(String sceneName, int sceneItemId) {
     final items = _allSceneItems[sceneName];
     if (items == null) return null;
@@ -400,26 +435,22 @@ class OBSProvider extends ChangeNotifier {
     return item?.isVisible;
   }
 
-  /// Публичный метод для загрузки источников выбранной сцены
   Future<void> loadSceneItems(String sceneName) async {
-    _selectedSceneForItems = sceneName; // Запоминаем выбранную сцену
+    _selectedSceneForItems = sceneName;
     await _fetchSceneItems(sceneName);
   }
 
   Future<void> _fetchAudioSources() async {
     try {
-      debugPrint('Fetching audio sources...');
       _audioSources = await _obsService.getInputList();
-      debugPrint('Audio sources loaded: ${_audioSources.length}');
       notifyListeners();
     } catch (e) {
-      debugPrint('Error fetching audio sources: $e');
+      log.e(_tag, 'Error fetching audio sources', e.toString());
     }
   }
 
   void _updateCurrentScene(String? sceneName) {
     if (sceneName == null) return;
-    debugPrint('Current scene changed to: $sceneName');
 
     _scenes = _scenes
         .map((s) => s.copyWith(
@@ -447,10 +478,9 @@ class OBSProvider extends ChangeNotifier {
     }
   }
 
-  /// Обработка события изменения состояния стрима
   void _handleStreamStateChanged(Map<String, dynamic> data) {
     final outputState = data['outputState'] as String?;
-    debugPrint('Stream state changed: $outputState');
+    log.i(_tag, 'Stream state: $outputState');
 
     switch (outputState) {
       case 'OBS_WEBSOCKET_OUTPUT_STARTED':
@@ -460,6 +490,8 @@ class OBSProvider extends ChangeNotifier {
           streamStatus:
               OBSOutputStatus(isActive: true, duration: Duration.zero),
         );
+        StatsHistoryService.instance.onStreamStarted();
+        _startStatsSnapshotTimer();
         break;
       case 'OBS_WEBSOCKET_OUTPUT_STOPPED':
         _streamStartTime = null;
@@ -467,16 +499,17 @@ class OBSProvider extends ChangeNotifier {
         _status = _status.copyWith(
           streamStatus: OBSOutputStatus(isActive: false),
         );
+        StatsHistoryService.instance.onStreamStopped();
+        _stopStatsSnapshotTimerIfIdle();
         break;
     }
     notifyListeners();
     _updateForegroundNotification();
   }
 
-  /// Обработка события изменения состояния записи
   void _handleRecordStateChanged(Map<String, dynamic> data) {
     final outputState = data['outputState'] as String?;
-    debugPrint('Record state changed: $outputState');
+    log.i(_tag, 'Record state: $outputState');
 
     switch (outputState) {
       case 'OBS_WEBSOCKET_OUTPUT_STARTED':
@@ -488,6 +521,8 @@ class OBSProvider extends ChangeNotifier {
           recordStatus:
               OBSOutputStatus(isActive: true, duration: Duration.zero),
         );
+        StatsHistoryService.instance.onRecordStarted();
+        _startStatsSnapshotTimer();
         break;
       case 'OBS_WEBSOCKET_OUTPUT_STOPPED':
         _recordStartTime = null;
@@ -497,9 +532,10 @@ class OBSProvider extends ChangeNotifier {
         _status = _status.copyWith(
           recordStatus: OBSOutputStatus(isActive: false),
         );
+        StatsHistoryService.instance.onRecordStopped();
+        _stopStatsSnapshotTimerIfIdle();
         break;
       case 'OBS_WEBSOCKET_OUTPUT_PAUSED':
-        // Игнорируем если уже на паузе (optimistic update уже установил)
         if (_status.recordStatus.isPaused) return;
         _recordPauseTime = DateTime.now();
         _status = _status.copyWith(
@@ -511,7 +547,6 @@ class OBSProvider extends ChangeNotifier {
         );
         break;
       case 'OBS_WEBSOCKET_OUTPUT_RESUMED':
-        // Игнорируем если уже не на паузе (optimistic update уже установил)
         if (!_status.recordStatus.isPaused) return;
         if (_recordPauseTime != null) {
           _recordPausedDuration += DateTime.now().difference(_recordPauseTime!);
@@ -534,14 +569,12 @@ class OBSProvider extends ChangeNotifier {
     _statusTimer?.cancel();
     _localTimeTimer?.cancel();
 
-    // Таймер для синхронизации состояния с OBS (каждые 5 сек)
     _statusTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (isConnected) {
         _syncStatusFromOBS();
       }
     });
 
-    // Локальный таймер для обновления времени (каждую секунду)
     _localTimeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (isConnected) {
         _updateLocalTime();
@@ -549,17 +582,14 @@ class OBSProvider extends ChangeNotifier {
     });
   }
 
-  /// Обновляет локальные счётчики времени каждую секунду
   void _updateLocalTime() {
     bool changed = false;
 
-    // Обновляем время стрима
     if (_status.streamStatus.isActive && _streamStartTime != null) {
       _localStreamDuration = DateTime.now().difference(_streamStartTime!);
       changed = true;
     }
 
-    // Обновляем время записи (с учётом паузы)
     if (_status.recordStatus.isActive && _recordStartTime != null) {
       if (_status.recordStatus.isPaused) {
         // На паузе — время не увеличивается
@@ -571,7 +601,6 @@ class OBSProvider extends ChangeNotifier {
     }
 
     if (changed) {
-      // Обновляем статус с локальным временем
       _status = _status.copyWith(
         streamStatus: _status.streamStatus.isActive
             ? OBSOutputStatus(
@@ -593,37 +622,30 @@ class OBSProvider extends ChangeNotifier {
     }
   }
 
-  /// Синхронизирует состояние с OBS (активен ли стрим/запись)
   Future<void> _syncStatusFromOBS() async {
     try {
       final streamStatus = await _obsService.getStreamStatus();
       final recordStatus = await _obsService.getRecordStatus();
 
-      // Проверяем изменение состояния стрима
       if (streamStatus.isActive != _status.streamStatus.isActive) {
         if (streamStatus.isActive && !_status.streamStatus.isActive) {
-          // Стрим начался
           _streamStartTime =
               DateTime.now().subtract(streamStatus.duration ?? Duration.zero);
           _localStreamDuration = streamStatus.duration ?? Duration.zero;
         } else if (!streamStatus.isActive) {
-          // Стрим остановился
           _streamStartTime = null;
           _localStreamDuration = Duration.zero;
         }
       }
 
-      // Проверяем изменение состояния записи
       if (recordStatus.isActive != _status.recordStatus.isActive) {
         if (recordStatus.isActive && !_status.recordStatus.isActive) {
-          // Запись началась
           _recordStartTime =
               DateTime.now().subtract(recordStatus.duration ?? Duration.zero);
           _localRecordDuration = recordStatus.duration ?? Duration.zero;
           _recordPausedDuration = Duration.zero;
           _recordPauseTime = null;
         } else if (!recordStatus.isActive) {
-          // Запись остановилась
           _recordStartTime = null;
           _localRecordDuration = Duration.zero;
           _recordPausedDuration = Duration.zero;
@@ -631,13 +653,10 @@ class OBSProvider extends ChangeNotifier {
         }
       }
 
-      // Проверяем изменение паузы записи
       if (recordStatus.isPaused != _status.recordStatus.isPaused) {
         if (recordStatus.isPaused && !_status.recordStatus.isPaused) {
-          // Пауза началась
           _recordPauseTime = DateTime.now();
         } else if (!recordStatus.isPaused && _status.recordStatus.isPaused) {
-          // Пауза закончилась
           if (_recordPauseTime != null) {
             _recordPausedDuration +=
                 DateTime.now().difference(_recordPauseTime!);
@@ -659,25 +678,23 @@ class OBSProvider extends ChangeNotifier {
         ),
       );
 
-      // Синхронизируем состояние Replay Buffer
       try {
         final replayActive = await _obsService.getReplayBufferStatus();
         if (replayActive != _status.replayBufferActive) {
           _status = _status.copyWith(replayBufferActive: replayActive);
         }
-      } catch (e) {
-        // Replay Buffer может быть не настроен в OBS - это нормально
+      } catch (_) {
+        // Replay Buffer может быть не настроен
       }
 
-      // Синхронизируем статистику
       try {
         final statsData = await _obsService.getStats();
         _stats = OBSStats.fromJson(statsData);
       } catch (e) {
-        debugPrint('Error fetching stats: $e');
+        log.w(_tag, 'Error fetching stats', e.toString());
       }
     } catch (e) {
-      debugPrint('Error syncing status: $e');
+      log.w(_tag, 'Error syncing status', e.toString());
     }
   }
 
@@ -705,13 +722,9 @@ class OBSProvider extends ChangeNotifier {
   // ==================== Действия ====================
 
   Future<void> switchScene(String sceneName) async {
-    if (!isConnected) {
-      debugPrint('Cannot switch scene: not connected');
-      return;
-    }
-    debugPrint('Switching to scene: $sceneName');
+    if (!isConnected) return;
+    log.d(_tag, 'Switching to scene: $sceneName');
 
-    // Optimistic update — сразу обновляем UI
     _scenes = _scenes
         .map((s) => s.copyWith(
               isCurrentProgram: s.name == sceneName,
@@ -719,24 +732,19 @@ class OBSProvider extends ChangeNotifier {
         .toList();
     notifyListeners();
 
-    // Отправляем команду без await
     _obsService.setCurrentProgramScene(sceneName).catchError((e) {
-      debugPrint('Error switching scene: $e');
+      log.e(_tag, 'Error switching scene', e.toString());
     });
   }
 
   Future<void> toggleSceneItem(
       String sceneName, int itemId, bool enabled) async {
     if (!isConnected) return;
-    debugPrint('Toggling scene item: $itemId in $sceneName to $enabled');
 
-    // Optimistic update — сразу обновляем локально
     _updateSceneItemLocally(sceneName, itemId, enabled);
 
-    // Отправляем команду без await
     _obsService.setSceneItemEnabled(sceneName, itemId, enabled).catchError((e) {
-      debugPrint('Error toggling scene item: $e');
-      // При ошибке откатываем
+      log.e(_tag, 'Error toggling scene item', e.toString());
       _updateSceneItemLocally(sceneName, itemId, !enabled);
     });
   }
@@ -744,93 +752,118 @@ class OBSProvider extends ChangeNotifier {
   Future<void> toggleStream() async {
     if (!isConnected) return;
 
-    // Optimistic update
     final wasActive = _status.streamStatus.isActive;
+    log.i(_tag, wasActive ? 'Stopping stream...' : 'Starting stream...');
+
     _status = _status.copyWith(
       streamStatus: OBSOutputStatus(isActive: !wasActive),
     );
     notifyListeners();
 
     _obsService.toggleStream().catchError((e) {
-      debugPrint('Error toggling stream: $e');
+      log.e(_tag, 'Error toggling stream, rolling back', e.toString());
+      _status = _status.copyWith(
+        streamStatus: OBSOutputStatus(isActive: wasActive),
+      );
+      notifyListeners();
     });
   }
 
   Future<void> startStream() async {
     if (!isConnected) return;
+    log.i(_tag, 'Starting stream...');
 
-    // Optimistic update
     _status = _status.copyWith(
       streamStatus: OBSOutputStatus(isActive: true),
     );
     notifyListeners();
 
     _obsService.startStream().catchError((e) {
-      debugPrint('Error starting stream: $e');
+      log.e(_tag, 'Error starting stream, rolling back', e.toString());
+      _status = _status.copyWith(
+        streamStatus: OBSOutputStatus(isActive: false),
+      );
+      notifyListeners();
     });
   }
 
   Future<void> stopStream() async {
     if (!isConnected) return;
+    log.i(_tag, 'Stopping stream...');
 
-    // Optimistic update
     _status = _status.copyWith(
       streamStatus: OBSOutputStatus(isActive: false),
     );
     notifyListeners();
 
     _obsService.stopStream().catchError((e) {
-      debugPrint('Error stopping stream: $e');
+      log.e(_tag, 'Error stopping stream, rolling back', e.toString());
+      _status = _status.copyWith(
+        streamStatus: OBSOutputStatus(isActive: true),
+      );
+      notifyListeners();
     });
   }
 
   Future<void> toggleRecord() async {
     if (!isConnected) return;
 
-    // Optimistic update
     final wasActive = _status.recordStatus.isActive;
+    log.i(_tag, wasActive ? 'Stopping record...' : 'Starting record...');
+
     _status = _status.copyWith(
       recordStatus: OBSOutputStatus(isActive: !wasActive),
     );
     notifyListeners();
 
     _obsService.toggleRecord().catchError((e) {
-      debugPrint('Error toggling record: $e');
+      log.e(_tag, 'Error toggling record, rolling back', e.toString());
+      _status = _status.copyWith(
+        recordStatus: OBSOutputStatus(isActive: wasActive),
+      );
+      notifyListeners();
     });
   }
 
   Future<void> startRecord() async {
     if (!isConnected) return;
+    log.i(_tag, 'Starting record...');
 
-    // Optimistic update
     _status = _status.copyWith(
       recordStatus: OBSOutputStatus(isActive: true),
     );
     notifyListeners();
 
     _obsService.startRecord().catchError((e) {
-      debugPrint('Error starting record: $e');
+      log.e(_tag, 'Error starting record, rolling back', e.toString());
+      _status = _status.copyWith(
+        recordStatus: OBSOutputStatus(isActive: false),
+      );
+      notifyListeners();
     });
   }
 
   Future<void> stopRecord() async {
     if (!isConnected) return;
+    log.i(_tag, 'Stopping record...');
 
-    // Optimistic update
     _status = _status.copyWith(
       recordStatus: OBSOutputStatus(isActive: false),
     );
     notifyListeners();
 
     _obsService.stopRecord().catchError((e) {
-      debugPrint('Error stopping record: $e');
+      log.e(_tag, 'Error stopping record, rolling back', e.toString());
+      _status = _status.copyWith(
+        recordStatus: OBSOutputStatus(isActive: true),
+      );
+      notifyListeners();
     });
   }
 
   Future<void> pauseRecord() async {
     if (!isConnected) return;
 
-    // Защита от быстрых повторных нажатий (500мс)
     final now = DateTime.now();
     if (_lastRecordPauseAction != null &&
         now.difference(_lastRecordPauseAction!).inMilliseconds < 500) {
@@ -838,7 +871,6 @@ class OBSProvider extends ChangeNotifier {
     }
     _lastRecordPauseAction = now;
 
-    // Optimistic update
     _recordPauseTime = DateTime.now();
     _status = _status.copyWith(
       recordStatus: OBSOutputStatus(
@@ -850,14 +882,13 @@ class OBSProvider extends ChangeNotifier {
     notifyListeners();
 
     _obsService.pauseRecord().catchError((e) {
-      debugPrint('Error pausing record: $e');
+      log.e(_tag, 'Error pausing record', e.toString());
     });
   }
 
   Future<void> resumeRecord() async {
     if (!isConnected) return;
 
-    // Защита от быстрых повторных нажатий (500мс)
     final now = DateTime.now();
     if (_lastRecordPauseAction != null &&
         now.difference(_lastRecordPauseAction!).inMilliseconds < 500) {
@@ -865,7 +896,6 @@ class OBSProvider extends ChangeNotifier {
     }
     _lastRecordPauseAction = now;
 
-    // Optimistic update - добавляем время паузы
     if (_recordPauseTime != null) {
       _recordPausedDuration += DateTime.now().difference(_recordPauseTime!);
       _recordPauseTime = null;
@@ -880,14 +910,13 @@ class OBSProvider extends ChangeNotifier {
     notifyListeners();
 
     _obsService.resumeRecord().catchError((e) {
-      debugPrint('Error resuming record: $e');
+      log.e(_tag, 'Error resuming record', e.toString());
     });
   }
 
   Future<void> toggleRecordPause() async {
     if (!isConnected) return;
 
-    // Защита от быстрых повторных нажатий (500мс)
     final now = DateTime.now();
     if (_lastRecordPauseAction != null &&
         now.difference(_lastRecordPauseAction!).inMilliseconds < 500) {
@@ -895,17 +924,14 @@ class OBSProvider extends ChangeNotifier {
     }
     _lastRecordPauseAction = now;
 
-    // Optimistic update
     final wasPaused = _status.recordStatus.isPaused;
 
     if (wasPaused) {
-      // Снимаем паузу - добавляем время паузы
       if (_recordPauseTime != null) {
         _recordPausedDuration += DateTime.now().difference(_recordPauseTime!);
         _recordPauseTime = null;
       }
     } else {
-      // Ставим паузу
       _recordPauseTime = DateTime.now();
     }
 
@@ -919,15 +945,13 @@ class OBSProvider extends ChangeNotifier {
     notifyListeners();
 
     _obsService.toggleRecordPause().catchError((e) {
-      debugPrint('Error toggling record pause: $e');
+      log.e(_tag, 'Error toggling record pause', e.toString());
     });
   }
 
   Future<void> toggleAudioMute(String inputName) async {
     if (!isConnected) return;
-    debugPrint('Toggling mute for: $inputName');
 
-    // Optimistic update
     final index = _audioSources.indexWhere((s) => s.name == inputName);
     if (index != -1) {
       final wasMuted = _audioSources[index].isMuted;
@@ -936,7 +960,7 @@ class OBSProvider extends ChangeNotifier {
     }
 
     _obsService.toggleInputMute(inputName).catchError((e) {
-      debugPrint('Error toggling mute: $e');
+      log.e(_tag, 'Error toggling mute for $inputName', e.toString());
     });
   }
 
@@ -947,12 +971,14 @@ class OBSProvider extends ChangeNotifier {
 
   Future<void> toggleVirtualCam() async {
     if (!isConnected) return;
+    log.i(_tag, 'Toggling virtual cam');
     await _obsService.toggleVirtualCam();
   }
 
   Future<void> toggleStudioMode() async {
     if (!isConnected) return;
     final currentState = _status.studioModeEnabled;
+    log.i(_tag, 'Toggling studio mode: ${!currentState}');
     await _obsService.setStudioModeEnabled(!currentState);
     _status = _status.copyWith(studioModeEnabled: !currentState);
     notifyListeners();
@@ -960,11 +986,11 @@ class OBSProvider extends ChangeNotifier {
 
   Future<void> triggerHotkey(String hotkeyName) async {
     if (!isConnected) return;
-    debugPrint('Triggering hotkey: $hotkeyName');
+    log.d(_tag, 'Triggering hotkey: $hotkeyName');
     try {
       await _obsService.triggerHotkeyByName(hotkeyName);
     } catch (e) {
-      debugPrint('Error triggering hotkey: $e');
+      log.e(_tag, 'Error triggering hotkey', e.toString());
     }
   }
 
@@ -973,7 +999,7 @@ class OBSProvider extends ChangeNotifier {
     try {
       return await _obsService.getHotkeyList();
     } catch (e) {
-      debugPrint('Error getting hotkeys: $e');
+      log.e(_tag, 'Error getting hotkeys', e.toString());
       return [];
     }
   }
@@ -997,10 +1023,10 @@ class OBSProvider extends ChangeNotifier {
         imageFilePath: path,
       );
 
-      debugPrint('Screenshot saved: $path');
+      log.i(_tag, 'Screenshot saved: $path');
       return path;
     } catch (e) {
-      debugPrint('Error saving screenshot: $e');
+      log.e(_tag, 'Error saving screenshot', e.toString());
       return null;
     }
   }
@@ -1009,9 +1035,9 @@ class OBSProvider extends ChangeNotifier {
     if (!isConnected) return;
     try {
       await _obsService.saveReplayBuffer();
-      debugPrint('Replay buffer saved');
+      log.i(_tag, 'Replay buffer saved');
     } catch (e) {
-      debugPrint('Error saving replay buffer: $e');
+      log.e(_tag, 'Error saving replay buffer', e.toString());
     }
   }
 
@@ -1020,9 +1046,10 @@ class OBSProvider extends ChangeNotifier {
     try {
       await _obsService.startReplayBuffer();
       _status = _status.copyWith(replayBufferActive: true);
+      log.i(_tag, 'Replay buffer started');
       notifyListeners();
     } catch (e) {
-      debugPrint('Error starting replay buffer: $e');
+      log.e(_tag, 'Error starting replay buffer', e.toString());
     }
   }
 
@@ -1031,9 +1058,10 @@ class OBSProvider extends ChangeNotifier {
     try {
       await _obsService.stopReplayBuffer();
       _status = _status.copyWith(replayBufferActive: false);
+      log.i(_tag, 'Replay buffer stopped');
       notifyListeners();
     } catch (e) {
-      debugPrint('Error stopping replay buffer: $e');
+      log.e(_tag, 'Error stopping replay buffer', e.toString());
     }
   }
 
@@ -1048,14 +1076,74 @@ class OBSProvider extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
-      debugPrint('Error toggling replay buffer: $e');
+      log.e(_tag, 'Error toggling replay buffer', e.toString());
     }
   }
 
-  /// Обработка события изменения состояния Replay Buffer
+  void _handleVolumeMeterEvent(Map<String, dynamic> data) {
+    if (_volumeListenerCount <= 0) return;
+
+    final inputs = data['inputs'] as List?;
+    if (inputs == null) return;
+
+    final activeNames = <String>{};
+
+    for (final input in inputs) {
+      final name = input['inputName'] as String?;
+      final levels = input['inputLevelsMul'] as List?;
+      if (name == null || levels == null) continue;
+
+      activeNames.add(name);
+      final channelPeaks = <double>[];
+      for (final channel in levels) {
+        if (channel is List && channel.length >= 3) {
+          // [0]=magnitude, [1]=peak (post-fader), [2]=inputPeak (pre-fader)
+          final peak = (channel[1] as num).toDouble();
+          channelPeaks.add(peak > 0 ? pow(peak, 0.25).toDouble() : 0.0);
+        }
+      }
+      _volumeLevels[name] = channelPeaks;
+    }
+
+    // Обнуляем уровни для неактивных источников
+    for (final name in _volumeLevels.keys.toList()) {
+      if (!activeNames.contains(name)) {
+        _volumeLevels[name] = [];
+      }
+    }
+
+    _volumeController.add(Map.from(_volumeLevels));
+  }
+
+  void _startStatsSnapshotTimer() {
+    if (_statsSnapshotTimer != null) return;
+    _statsSnapshotTimer = Timer.periodic(
+      const Duration(seconds: kSnapshotIntervalSeconds),
+      (_) => _collectStatsSnapshot(),
+    );
+  }
+
+  void _stopStatsSnapshotTimerIfIdle() {
+    if (!StatsHistoryService.instance.isCollecting) {
+      _statsSnapshotTimer?.cancel();
+      _statsSnapshotTimer = null;
+    }
+  }
+
+  void _collectStatsSnapshot() {
+    if (!isConnected) return;
+    StatsHistoryService.instance.addSnapshot(
+      fps: _stats.activeFps,
+      cpuUsage: _stats.cpuUsage,
+      memoryUsage: _stats.memoryUsage,
+      renderSkippedFrames: _stats.renderSkippedFrames,
+      outputSkippedFrames: _stats.outputSkippedFrames,
+    );
+  }
+
   void _handleReplayBufferStateChanged(Map<String, dynamic> data) {
     final outputState = data['outputState'] as String?;
-    debugPrint('Replay buffer state changed: $outputState');
+    log.d(_tag, 'Replay buffer state: $outputState');
 
     switch (outputState) {
       case 'OBS_WEBSOCKET_OUTPUT_STARTED':
@@ -1067,6 +1155,7 @@ class OBSProvider extends ChangeNotifier {
     }
     notifyListeners();
   }
+
   // ==================== Управление подключениями ====================
 
   Future<void> loadConnections() async {
@@ -1117,7 +1206,7 @@ class OBSProvider extends ChangeNotifier {
         imageCompressionQuality: quality ?? 30,
       );
     } catch (e) {
-      debugPrint('Error getting scene preview: $e');
+      // Не логируем — слишком частый вызов (30fps)
       return null;
     }
   }
@@ -1148,9 +1237,13 @@ class OBSProvider extends ChangeNotifier {
   @override
   void dispose() {
     _statusTimer?.cancel();
+    _localTimeTimer?.cancel();
     _debounceTimer?.cancel();
     _reminderTimer?.cancel();
     _reconnectTimer?.cancel();
+    _reconnectCountdownTimer?.cancel();
+    _statsSnapshotTimer?.cancel();
+    _volumeController.close();
     _obsService.dispose();
     super.dispose();
   }

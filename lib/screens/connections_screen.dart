@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import '../providers/obs_provider.dart';
+import '../services/autodiscovery_service.dart';
 
 const Map<String, IconData> connectionIcons = {
   'computer': Icons.computer,
@@ -50,6 +51,11 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
       appBar: AppBar(
         title: const Text('Подключения'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.wifi_find),
+            onPressed: () => _startAutoDiscovery(context),
+            tooltip: 'Поиск OBS в сети',
+          ),
           IconButton(
             icon: const Icon(Icons.qr_code_scanner),
             onPressed: () => _scanQRCode(context),
@@ -293,6 +299,36 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     showDialog(
       context: context,
       builder: (context) => ConnectionDialog(connection: connection),
+    );
+  }
+
+  void _startAutoDiscovery(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _AutoDiscoveryDialog(
+        onSelect: (discovered) async {
+          Navigator.pop(ctx);
+          final provider = Provider.of<OBSProvider>(context, listen: false);
+          final messenger = ScaffoldMessenger.of(context);
+          final connection = OBSConnection(
+            id: const Uuid().v4(),
+            name: 'OBS (${discovered.ip})',
+            host: discovered.ip,
+            port: discovered.port,
+          );
+          await provider.addConnection(connection);
+          if (mounted) {
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text('Добавлено: ${discovered.ip}:${discovered.port}'),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        },
+      ),
     );
   }
 
@@ -738,6 +774,122 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       host: host,
       port: port,
       password: password,
+    );
+  }
+}
+
+class _AutoDiscoveryDialog extends StatefulWidget {
+  final void Function(DiscoveredOBS) onSelect;
+
+  const _AutoDiscoveryDialog({required this.onSelect});
+
+  @override
+  State<_AutoDiscoveryDialog> createState() => _AutoDiscoveryDialogState();
+}
+
+class _AutoDiscoveryDialogState extends State<_AutoDiscoveryDialog> {
+  List<DiscoveredOBS>? _results;
+  bool _isScanning = true;
+  int _scanned = 0;
+  int _total = 254;
+
+  @override
+  void initState() {
+    super.initState();
+    _scan();
+  }
+
+  Future<void> _scan() async {
+    setState(() {
+      _isScanning = true;
+      _results = null;
+      _scanned = 0;
+    });
+
+    final results = await AutoDiscoveryService.scan(
+      onProgress: (scanned, total) {
+        if (mounted) {
+          setState(() {
+            _scanned = scanned;
+            _total = total;
+          });
+        }
+      },
+    );
+
+    if (mounted) {
+      setState(() {
+        _results = results;
+        _isScanning = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.wifi_find, size: 24),
+          SizedBox(width: 12),
+          Text('Поиск OBS'),
+        ],
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_isScanning) ...[
+              LinearProgressIndicator(value: _scanned / _total),
+              const SizedBox(height: 12),
+              Text(
+                'Сканирование: $_scanned / $_total',
+                style: const TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+            ] else if (_results != null && _results!.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Column(
+                  children: [
+                    Icon(Icons.wifi_off, size: 48, color: Colors.grey),
+                    SizedBox(height: 12),
+                    Text(
+                      'OBS не найден в сети',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Убедитесь что OBS запущен и\nWebSocket сервер включён',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                  ],
+                ),
+              )
+            else if (_results != null)
+              ...(_results!.map((r) => ListTile(
+                    leading: const Icon(Icons.cast_connected, color: Colors.green),
+                    title: Text(r.ip),
+                    subtitle: Text('Порт ${r.port} · ${r.responseTimeMs}мс'),
+                    trailing: const Icon(Icons.add_circle_outline),
+                    onTap: () => widget.onSelect(r),
+                  ))),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Закрыть'),
+        ),
+        if (!_isScanning)
+          TextButton.icon(
+            onPressed: _scan,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Повторить'),
+          ),
+      ],
     );
   }
 }

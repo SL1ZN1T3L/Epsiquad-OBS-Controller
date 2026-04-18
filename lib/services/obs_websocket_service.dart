@@ -2,13 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
 import '../models/models.dart';
+import 'log_service.dart';
 
 typedef EventCallback = void Function(
     String eventType, Map<String, dynamic> data);
+
+const _tag = 'WS';
 
 class OBSWebSocketService {
   WebSocketChannel? _channel;
@@ -32,23 +34,22 @@ class OBSWebSocketService {
     if (_isConnecting) return false;
     _isConnecting = true;
 
-    debugPrint('OBS WebSocket: Starting connection...');
+    log.i(_tag, 'Connecting to ${connection.host}:${connection.port}...');
     try {
       final uri = Uri.parse('ws://${connection.host}:${connection.port}');
-      debugPrint('Connecting to $uri');
       _channel = WebSocketChannel.connect(uri);
 
       await _channel!.ready;
-      debugPrint('WebSocket ready');
+      log.d(_tag, 'WebSocket ready');
 
       _subscription = _channel!.stream.listen(
         _handleMessage,
         onError: (error) {
-          debugPrint('WebSocket error: $error');
+          log.e(_tag, 'WebSocket stream error', error.toString());
           _handleError('WebSocket error: $error');
         },
         onDone: () {
-          debugPrint('WebSocket closed');
+          log.w(_tag, 'WebSocket stream closed');
           _handleDisconnect('Connection closed');
         },
         cancelOnError: false,
@@ -62,8 +63,6 @@ class OBSWebSocketService {
         onTimeout: () => throw TimeoutException('Connection timeout'),
       );
 
-      debugPrint('Received Hello: $hello');
-
       final authRequired = hello['d']?['authentication'] != null;
       String? authString;
 
@@ -72,7 +71,9 @@ class OBSWebSocketService {
         final challenge = auth['challenge'] as String;
         final salt = auth['salt'] as String;
         authString = _generateAuthString(connection.password!, salt, challenge);
-        debugPrint('Auth required, generated auth string');
+        log.d(_tag, 'Auth required, generated auth string');
+      } else if (authRequired && connection.password == null) {
+        log.w(_tag, 'Auth required but no password provided');
       }
 
       final identifyCompleter = Completer<Map<String, dynamic>>();
@@ -83,11 +84,10 @@ class OBSWebSocketService {
         'd': {
           'rpcVersion': 1,
           if (authString != null) 'authentication': authString,
-          'eventSubscriptions': 207,
+          'eventSubscriptions': 511,
         },
       };
 
-      debugPrint('Sending Identify: $identifyMessage');
       _channel!.sink.add(json.encode(identifyMessage));
 
       final identifyResponse = await identifyCompleter.future.timeout(
@@ -95,17 +95,24 @@ class OBSWebSocketService {
         onTimeout: () => throw TimeoutException('Identify timeout'),
       );
 
-      debugPrint('Identify response: $identifyResponse');
-
       if (identifyResponse['op'] == 2) {
         _isConnected = true;
+        log.i(_tag, 'Connected successfully');
         onConnected?.call();
         return true;
       }
 
-      throw Exception('Identify failed: $identifyResponse');
+      throw Exception('Identify failed: op=${identifyResponse['op']}');
+    } on TimeoutException catch (e) {
+      log.e(_tag, 'Connection timeout', e.toString());
+      _handleError('Connection timeout');
+      return false;
+    } on WebSocketChannelException catch (e) {
+      log.e(_tag, 'WebSocket connection refused', e.toString());
+      _handleError('Connection refused: $e');
+      return false;
     } catch (e) {
-      debugPrint('Connection error: $e');
+      log.e(_tag, 'Connection failed', e.toString());
       _handleError('Connection failed: $e');
       return false;
     } finally {
@@ -116,12 +123,11 @@ class OBSWebSocketService {
   Future<void> disconnect() async {
     if (!_isConnected && _channel == null && !_isConnecting) return;
 
-    debugPrint('OBS WebSocket: Disconnecting...');
+    log.i(_tag, 'Disconnecting...');
 
     _isConnected = false;
     _isConnecting = false;
 
-    // Complete all pending requests with error
     for (final completer in _responseCompleters.values) {
       if (!completer.isCompleted) {
         completer.completeError('Disconnected');
@@ -129,21 +135,18 @@ class OBSWebSocketService {
     }
     _responseCompleters.clear();
 
-    // Cancel subscription
     await _subscription?.cancel();
     _subscription = null;
 
-    // Close channel
     try {
       await _channel?.sink.close(status.normalClosure);
     } catch (e) {
-      debugPrint('Error closing WebSocket: $e');
+      log.w(_tag, 'Error closing WebSocket', e.toString());
     }
     _channel = null;
 
-    // Wait for OBS to process disconnect
     await Future.delayed(const Duration(milliseconds: 500));
-    debugPrint('OBS WebSocket: Disconnected');
+    log.i(_tag, 'Disconnected');
   }
 
   String _generateAuthString(String password, String salt, String challenge) {
@@ -157,8 +160,6 @@ class OBSWebSocketService {
     try {
       final data = json.decode(message as String) as Map<String, dynamic>;
       final op = data['op'] as int;
-
-      // debugPrint('Received message op=$op');
 
       switch (op) {
         case 0: // Hello
@@ -174,7 +175,6 @@ class OBSWebSocketService {
           break;
         case 7: // RequestResponse
           final requestId = data['d']?['requestId'] as String?;
-          // debugPrint('Response for $requestId: ${data['d']?['requestStatus']}');
           if (requestId != null && _responseCompleters.containsKey(requestId)) {
             _responseCompleters[requestId]!.complete(data);
             _responseCompleters.remove(requestId);
@@ -182,7 +182,7 @@ class OBSWebSocketService {
           break;
       }
     } catch (e) {
-      debugPrint('Message parse error: $e');
+      log.e(_tag, 'Message parse error', e.toString());
       _handleError('Message parse error: $e');
     }
   }
@@ -221,7 +221,6 @@ class OBSWebSocketService {
     final completer = Completer<Map<String, dynamic>>();
     _responseCompleters[requestId] = completer;
 
-    // ПРАВИЛЬНЫЙ ФОРМАТ: requestData должен быть вложенным объектом
     final message = {
       'op': 6,
       'd': {
@@ -231,26 +230,34 @@ class OBSWebSocketService {
       },
     };
 
-    // debugPrint('Sending request: $message');
     _channel!.sink.add(json.encode(message));
 
-    final response = await completer.future.timeout(
-      const Duration(seconds: 15),
-      onTimeout: () {
-        _responseCompleters.remove(requestId);
-        throw TimeoutException('Request timeout: $requestType');
-      },
-    );
+    try {
+      final response = await completer.future.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          _responseCompleters.remove(requestId);
+          throw TimeoutException('Request timeout: $requestType');
+        },
+      );
 
-    // Проверяем успешность
-    final requestStatus = response['d']?['requestStatus'];
-    if (requestStatus != null && requestStatus['result'] == false) {
-      final code = requestStatus['code'];
-      final comment = requestStatus['comment'] ?? 'Unknown error';
-      debugPrint('Request failed: $code - $comment');
+      final requestStatus = response['d']?['requestStatus'];
+      if (requestStatus != null && requestStatus['result'] == false) {
+        final code = requestStatus['code'];
+        final comment = requestStatus['comment'] ?? 'Unknown error';
+        log.w(_tag, 'Request $requestType failed: $code', comment);
+      }
+
+      return response;
+    } on TimeoutException {
+      log.e(_tag, 'Request timeout', requestType);
+      rethrow;
+    } catch (e) {
+      if (e.toString() != 'Disconnected') {
+        log.e(_tag, 'Request error: $requestType', e.toString());
+      }
+      rethrow;
     }
-
-    return response;
   }
 
   String _generateRequestId() {
@@ -258,6 +265,19 @@ class OBSWebSocketService {
     final random = Random();
     return List.generate(16, (index) => chars[random.nextInt(chars.length)])
         .join();
+  }
+
+  /// Изменяет подписки на события без переподключения (op=3 Reidentify)
+  void reidentify(int eventSubscriptions) {
+    if (!_isConnected || _channel == null) return;
+    final msg = {
+      'op': 3,
+      'd': {
+        'eventSubscriptions': eventSubscriptions,
+      },
+    };
+    _channel!.sink.add(json.encode(msg));
+    log.d(_tag, 'Reidentify with eventSubscriptions: $eventSubscriptions');
   }
 
   // ==================== API методы ====================
@@ -281,7 +301,7 @@ class OBSWebSocketService {
     final currentProgram = data['currentProgramSceneName'] as String?;
     final currentPreview = data['currentPreviewSceneName'] as String?;
 
-    debugPrint('Scenes: $scenes, current: $currentProgram');
+    log.d(_tag, 'Loaded ${scenes.length} scenes, current: $currentProgram');
 
     return scenes
         .map((s) => OBSScene.fromJson(
@@ -301,7 +321,7 @@ class OBSWebSocketService {
   }
 
   Future<void> setCurrentProgramScene(String sceneName) async {
-    debugPrint('Setting scene to: $sceneName');
+    log.d(_tag, 'Set scene: $sceneName');
     await _sendRequest('SetCurrentProgramScene', {
       'sceneName': sceneName,
     });
@@ -326,7 +346,7 @@ class OBSWebSocketService {
       'sceneName': sceneName,
     });
     final items = response['d']?['responseData']?['sceneItems'] as List? ?? [];
-    debugPrint('Scene items for $sceneName: ${items.length}');
+    log.d(_tag, 'Scene items for $sceneName: ${items.length}');
     return items
         .map((i) => OBSSceneItem.fromJson(i as Map<String, dynamic>))
         .toList();
@@ -347,20 +367,20 @@ class OBSWebSocketService {
     final response = await _sendRequest('GetInputList', null);
     final inputs = response['d']?['responseData']?['inputs'] as List? ?? [];
 
-    debugPrint('Inputs: ${inputs.length}');
-
     final audioSources = <OBSAudioSource>[];
     for (final input in inputs) {
       final name = input['inputName'] as String;
       final kind = input['inputKind'] as String? ?? 'unknown';
 
-      // Только аудио источники
+      // Аудио-устройства + медиа-источники со звуком
       if (kind.contains('wasapi') ||
           kind.contains('pulse') ||
           kind.contains('coreaudio') ||
           kind.contains('alsa') ||
           kind.contains('jack') ||
-          kind.contains('audio')) {
+          kind.contains('audio') ||
+          kind.contains('ffmpeg') ||
+          kind.contains('vlc')) {
         try {
           final muteResponse =
               await _sendRequest('GetInputMute', {'inputName': name});
@@ -368,7 +388,6 @@ class OBSWebSocketService {
               muteResponse['d']?['responseData']?['inputMuted'] as bool? ??
                   false;
 
-          // Получаем громкость
           final volumeResponse =
               await _sendRequest('GetInputVolume', {'inputName': name});
           final volumeMul =
@@ -383,13 +402,28 @@ class OBSWebSocketService {
             volume: _mulToSlider(volumeMul),
           ));
         } catch (e) {
-          debugPrint('Error getting audio info for $name: $e');
+          log.w(_tag, 'Error getting audio info for $name', e.toString());
         }
       }
     }
 
-    debugPrint('Audio sources: ${audioSources.length}');
+    log.d(_tag, 'Audio sources: ${audioSources.length}');
     return audioSources;
+  }
+
+  /// Возвращает имена медиа-источников (ffmpeg_source, vlc_source)
+  Future<List<String>> getMediaInputNames() async {
+    final response = await _sendRequest('GetInputList', null);
+    final inputs = response['d']?['responseData']?['inputs'] as List? ?? [];
+
+    final mediaNames = <String>[];
+    for (final input in inputs) {
+      final kind = input['inputKind'] as String? ?? '';
+      if (kind == 'ffmpeg_source' || kind == 'vlc_source') {
+        mediaNames.add(input['inputName'] as String);
+      }
+    }
+    return mediaNames;
   }
 
   Future<void> setInputMute(String inputName, bool muted) async {
@@ -406,7 +440,6 @@ class OBSWebSocketService {
   }
 
   Future<void> setInputVolume(String inputName, double sliderValue) async {
-    // Конвертация позиции слайдера (0-1) в OBS mul: mul = position^4
     final volumeMul = _sliderToMul(sliderValue);
     await _sendRequest('SetInputVolume', {
       'inputName': inputName,
@@ -414,15 +447,13 @@ class OBSWebSocketService {
     });
   }
 
-  // Конвертация позиции слайдера в OBS multiplier (для соответствия фейдеру OBS)
   double _sliderToMul(double slider) {
-    return slider * slider * slider * slider; // slider^4
+    return slider * slider * slider * slider;
   }
 
-  // Конвертация OBS multiplier в позицию слайдера
   double _mulToSlider(double mul) {
     if (mul <= 0) return 0;
-    return pow(mul, 0.25).toDouble(); // mul^0.25
+    return pow(mul, 0.25).toDouble();
   }
 
   // ==================== Стрим ====================
@@ -578,7 +609,6 @@ class OBSWebSocketService {
     return imageFilePath;
   }
 
-  /// Возвращает скриншот источника в base64 (для превью в приложении)
   Future<String?> getSourceScreenshotBase64({
     required String sourceName,
     String imageFormat = 'jpg',
@@ -594,6 +624,122 @@ class OBSWebSocketService {
       'imageCompressionQuality': imageCompressionQuality,
     });
     return response['d']?['responseData']?['imageData'] as String?;
+  }
+
+  // ==================== Scene Collections ====================
+
+  Future<Map<String, dynamic>> getSceneCollectionList() async {
+    final response = await _sendRequest('GetSceneCollectionList', null);
+    return response['d']?['responseData'] ?? {};
+  }
+
+  Future<void> setCurrentSceneCollection(String collectionName) async {
+    log.i(_tag, 'Switching scene collection: $collectionName');
+    await _sendRequest('SetCurrentSceneCollection', {
+      'sceneCollectionName': collectionName,
+    });
+  }
+
+  // ==================== Профили OBS ====================
+
+  Future<Map<String, dynamic>> getProfileList() async {
+    final response = await _sendRequest('GetProfileList', null);
+    return response['d']?['responseData'] ?? {};
+  }
+
+  Future<void> setCurrentProfile(String profileName) async {
+    log.i(_tag, 'Switching profile: $profileName');
+    await _sendRequest('SetCurrentProfile', {
+      'profileName': profileName,
+    });
+  }
+
+  // ==================== Переходы ====================
+
+  Future<Map<String, dynamic>> getSceneTransitionList() async {
+    final response = await _sendRequest('GetSceneTransitionList', null);
+    return response['d']?['responseData'] ?? {};
+  }
+
+  Future<Map<String, dynamic>> getCurrentSceneTransition() async {
+    final response = await _sendRequest('GetCurrentSceneTransition', null);
+    return response['d']?['responseData'] ?? {};
+  }
+
+  Future<void> setCurrentSceneTransition(String transitionName) async {
+    log.i(_tag, 'Set transition: $transitionName');
+    await _sendRequest('SetCurrentSceneTransition', {
+      'transitionName': transitionName,
+    });
+  }
+
+  Future<void> setCurrentSceneTransitionDuration(int durationMs) async {
+    await _sendRequest('SetCurrentSceneTransitionDuration', {
+      'transitionDuration': durationMs,
+    });
+  }
+
+  // ==================== Фильтры источников ====================
+
+  Future<List<OBSSourceFilter>> getSourceFilterList(String sourceName) async {
+    final response = await _sendRequest('GetSourceFilterList', {
+      'sourceName': sourceName,
+    });
+    final filters = response['d']?['responseData']?['filters'] as List? ?? [];
+    return filters
+        .map((f) => OBSSourceFilter.fromJson(f as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> setSourceFilterEnabled(
+      String sourceName, String filterName, bool enabled) async {
+    await _sendRequest('SetSourceFilterEnabled', {
+      'sourceName': sourceName,
+      'filterName': filterName,
+      'filterEnabled': enabled,
+    });
+  }
+
+  // ==================== Медиа источники ====================
+
+  Future<OBSMediaStatus> getMediaInputStatus(String inputName) async {
+    final response = await _sendRequest('GetMediaInputStatus', {
+      'inputName': inputName,
+    });
+    final data = response['d']?['responseData'] ?? {};
+    return OBSMediaStatus(
+      inputName: inputName,
+      state: data['mediaState'] as String? ?? 'OBS_MEDIA_STATE_NONE',
+      duration: data['mediaDuration'] != null
+          ? Duration(milliseconds: data['mediaDuration'] as int)
+          : null,
+      cursor: data['mediaCursor'] != null
+          ? Duration(milliseconds: data['mediaCursor'] as int)
+          : null,
+    );
+  }
+
+  Future<void> triggerMediaInputAction(String inputName, String action) async {
+    await _sendRequest('TriggerMediaInputAction', {
+      'inputName': inputName,
+      'mediaAction': action,
+    });
+  }
+
+  Future<void> playMediaInput(String inputName) async {
+    await triggerMediaInputAction(inputName, 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_PLAY');
+  }
+
+  Future<void> pauseMediaInput(String inputName) async {
+    await triggerMediaInputAction(inputName, 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_PAUSE');
+  }
+
+  Future<void> stopMediaInput(String inputName) async {
+    await triggerMediaInputAction(inputName, 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_STOP');
+  }
+
+  Future<void> restartMediaInput(String inputName) async {
+    await triggerMediaInputAction(inputName, 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART');
   }
 
   void dispose() {

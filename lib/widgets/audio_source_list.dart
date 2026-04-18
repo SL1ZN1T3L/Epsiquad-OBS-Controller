@@ -1,16 +1,20 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/models.dart';
+import 'volume_meter.dart';
 
 class AudioSourceList extends StatelessWidget {
   final List<OBSAudioSource> sources;
   final Function(OBSAudioSource) onMuteToggle;
   final Function(OBSAudioSource, double)? onVolumeChange;
+  final Stream<Map<String, List<double>>>? volumeStream;
 
   const AudioSourceList({
     super.key,
     required this.sources,
     required this.onMuteToggle,
     this.onVolumeChange,
+    this.volumeStream,
   });
 
   @override
@@ -31,6 +35,7 @@ class AudioSourceList extends StatelessWidget {
           index: index,
           onMuteToggle: onMuteToggle,
           onVolumeChange: onVolumeChange,
+          volumeStream: volumeStream,
         );
       },
     );
@@ -42,6 +47,7 @@ class _AnimatedAudioItem extends StatefulWidget {
   final int index;
   final Function(OBSAudioSource) onMuteToggle;
   final Function(OBSAudioSource, double)? onVolumeChange;
+  final Stream<Map<String, List<double>>>? volumeStream;
 
   const _AnimatedAudioItem({
     super.key,
@@ -49,6 +55,7 @@ class _AnimatedAudioItem extends StatefulWidget {
     required this.index,
     required this.onMuteToggle,
     this.onVolumeChange,
+    this.volumeStream,
   });
 
   @override
@@ -63,6 +70,7 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
 
   double _localVolume = 0;
   bool _isDragging = false;
+  Timer? _throttle;
 
   @override
   void initState() {
@@ -97,6 +105,7 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
   @override
   void dispose() {
     _controller.dispose();
+    _throttle?.cancel();
     super.dispose();
   }
 
@@ -154,6 +163,21 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
                     onPressed: () => widget.onMuteToggle(source),
                   ),
                 ),
+                // Volume Meter
+                if (widget.volumeStream != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: StreamBuilder<Map<String, List<double>>>(
+                      stream: widget.volumeStream,
+                      builder: (context, snapshot) {
+                        final levels = snapshot.data?[source.name] ?? [];
+                        return VolumeMeter(
+                          levels: levels,
+                          isMuted: source.isMuted,
+                        );
+                      },
+                    ),
+                  ),
                 // Слайдер громкости
                 AnimatedCrossFade(
                   duration: const Duration(milliseconds: 200),
@@ -189,9 +213,15 @@ class _AnimatedAudioItemState extends State<_AnimatedAudioItem>
                               onChangeStart: (_) => _isDragging = true,
                               onChanged: (value) {
                                 setState(() => _localVolume = value);
+                                if (_throttle == null || !_throttle!.isActive) {
+                                  _throttle = Timer(const Duration(milliseconds: 80), () {
+                                    widget.onVolumeChange?.call(source, _localVolume);
+                                  });
+                                }
                               },
                               onChangeEnd: (value) {
                                 _isDragging = false;
+                                _throttle?.cancel();
                                 widget.onVolumeChange?.call(source, value);
                               },
                             ),

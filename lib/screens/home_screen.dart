@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:open_filex/open_filex.dart';
 import '../providers/obs_provider.dart';
+import '../services/log_service.dart';
 import '../services/update_service.dart';
 import '../widgets/widgets.dart';
 import 'connections_screen.dart';
@@ -14,6 +15,13 @@ import 'quick_control_screen.dart';
 import 'settings_screen.dart';
 import 'about_screen.dart';
 import 'stats_screen.dart';
+import 'log_screen.dart';
+import 'obs_config_screen.dart';
+import 'filters_screen.dart';
+import 'media_controls_screen.dart';
+import 'history_screen.dart';
+import 'stream_chat_screen.dart';
+import 'theme_editor_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -490,39 +498,14 @@ class _HomeScreenState extends State<HomeScreen>
           floatingActionButton: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Меню дополнительных экранов
               FloatingActionButton.small(
-                heroTag: 'settings',
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                  );
-                  _loadSettings();
-                },
-                tooltip: 'Настройки',
-                child: const Icon(Icons.settings),
-              ),
-              const SizedBox(height: 8),
-              FloatingActionButton.small(
-                heroTag: 'about',
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AboutScreen()),
-                ),
-                tooltip: 'О приложении',
-                child: const Icon(Icons.info_outline),
+                heroTag: 'menu',
+                onPressed: () => _showToolsMenu(context, provider),
+                tooltip: 'Инструменты',
+                child: const Icon(Icons.more_vert),
               ),
               if (provider.isConnected) ...[
-                const SizedBox(height: 8),
-                FloatingActionButton.small(
-                  heroTag: 'stats',
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const StatsScreen()),
-                  ),
-                  tooltip: 'Статистика',
-                  child: const Icon(Icons.analytics),
-                ),
                 const SizedBox(height: 8),
                 FloatingActionButton(
                   heroTag: 'quick',
@@ -655,6 +638,148 @@ class _HomeScreenState extends State<HomeScreen>
       onMuteToggle: (source) => provider.toggleAudioMute(source.name),
       onVolumeChange: (source, volume) =>
           provider.setAudioVolume(source.name, volume),
+      volumeStream: provider.volumeStream,
+    );
+  }
+
+  void _showToolsMenu(BuildContext context, OBSProvider provider) {
+    final isConnected = provider.isConnected;
+    final nav = Navigator.of(context);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade600,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+              if (isConnected) ...[
+                ListTile(
+                  leading: const Icon(Icons.analytics, color: Colors.blue),
+                  title: const Text('Статистика'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    nav.push(
+                        MaterialPageRoute(builder: (_) => const StatsScreen()));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.tune, color: Colors.teal),
+                  title: const Text('Конфигурация OBS'),
+                  subtitle: const Text('Коллекции сцен, профили, переходы'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    nav.push(
+                        MaterialPageRoute(builder: (_) => const OBSConfigScreen()));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.filter_alt, color: Colors.purple),
+                  title: const Text('Фильтры'),
+                  subtitle: const Text('Управление фильтрами источников'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    nav.push(
+                        MaterialPageRoute(builder: (_) => const FiltersScreen()));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.movie, color: Colors.orange),
+                  title: const Text('Медиа'),
+                  subtitle: const Text('Управление медиа-источниками'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    nav.push(
+                        MaterialPageRoute(builder: (_) => const MediaControlsScreen()));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.history, color: Colors.green),
+                  title: const Text('История'),
+                  subtitle: const Text('Статистика стримов и записей'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    nav.push(
+                        MaterialPageRoute(builder: (_) => const HistoryScreen()));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.chat, color: Colors.deepPurple),
+                  title: const Text('Чат стрима'),
+                  subtitle: const Text('Twitch / YouTube'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    nav.push(
+                        MaterialPageRoute(builder: (_) => const StreamChatScreen()));
+                  },
+                ),
+                const Divider(),
+              ],
+              ListTile(
+                leading: const Icon(Icons.palette, color: Colors.pink),
+                title: const Text('Оформление'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  nav.push(MaterialPageRoute(
+                    builder: (_) => ThemeEditorScreen(
+                      onThemeChanged: (theme) {
+                        // Тема применится через rebuild
+                      },
+                    ),
+                  ));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.settings),
+                title: const Text('Настройки'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  await nav.push(
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                  _loadSettings();
+                },
+              ),
+              if (log.enabled)
+                ListTile(
+                  leading: const Icon(Icons.article, color: Colors.cyan),
+                  title: const Text('Журнал событий'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    nav.push(
+                        MaterialPageRoute(builder: (_) => const LogScreen()));
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('О приложении'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  nav.push(
+                      MaterialPageRoute(builder: (_) => const AboutScreen()));
+                },
+              ),
+            ],
+          ),
+          ),
+        ),
+        ),
+      ),
     );
   }
 

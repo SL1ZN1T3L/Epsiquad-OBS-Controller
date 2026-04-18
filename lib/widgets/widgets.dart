@@ -6,3 +6,4 @@ export 'scene_grid.dart';
 export 'scene_item_list.dart';
 export 'screen_saver.dart';
 export 'shader_warmup.dart';
+export 'volume_meter.dart';

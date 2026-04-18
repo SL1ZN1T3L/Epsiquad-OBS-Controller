@@ -1,12 +1,12 @@
 class OBSConnection {
   final String id;
-  String name;
-  String host;
-  int port;
-  String? password;
-  bool isDefault;
-  DateTime? lastConnected;
-  String iconName;
+  final String name;
+  final String host;
+  final int port;
+  final String? password;
+  final bool isDefault;
+  final DateTime? lastConnected;
+  final String iconName;
 
   static const defaultIcon = 'computer';
 

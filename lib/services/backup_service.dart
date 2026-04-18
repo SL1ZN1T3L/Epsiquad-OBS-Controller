@@ -12,6 +12,7 @@ class BackupData {
   final List<OBSConnection> connections;
   final Map<String, dynamic> settings;
   final List<Map<String, dynamic>> quickControlConfigs;
+  final Map<String, dynamic> extraPrefs;
 
   BackupData({
     required this.version,
@@ -19,6 +20,7 @@ class BackupData {
     required this.connections,
     required this.settings,
     required this.quickControlConfigs,
+    this.extraPrefs = const {},
   });
 
   Map<String, dynamic> toJson() => {
@@ -27,6 +29,7 @@ class BackupData {
         'connections': connections.map((c) => c.toJson()).toList(),
         'settings': settings,
         'quickControlConfigs': quickControlConfigs,
+        'extraPrefs': extraPrefs,
       };
 
   factory BackupData.fromJson(Map<String, dynamic> json) {
@@ -41,16 +44,33 @@ class BackupData {
       quickControlConfigs: (json['quickControlConfigs'] as List?)
               ?.cast<Map<String, dynamic>>() ??
           [],
+      extraPrefs: json['extraPrefs'] as Map<String, dynamic>? ?? {},
     );
   }
 }
 
 /// Сервис для экспорта/импорта настроек приложения
 class BackupService {
-  static const _backupVersion = '1.0';
+  static const _backupVersion = '2.0';
   static const _connectionsKey = 'obs_connections';
   static const _settingsKey = 'app_settings';
   static const _quickControlKey = 'quickControlConfig';
+
+  /// Ключи, хранимые напрямую в SharedPreferences (вне app_settings)
+  static const _extraKeys = <String>[
+    'custom_theme',
+    'saved_themes',
+    'chatPlatform',
+    'chatUsername',
+    'chatVideoId',
+    'loggingEnabled',
+    'confirmStopStream',
+    'confirmStopRecord',
+    'reminderInterval',
+    'reminderMessage',
+    'quickControlProfiles',
+    'activeProfileId',
+  ];
 
   final SharedPreferences _prefs;
 
@@ -95,12 +115,22 @@ class BackupService {
       }
     }
 
+    // Собираем доп. настройки, хранимые напрямую
+    final extraPrefs = <String, dynamic>{};
+    for (final key in _extraKeys) {
+      final value = _prefs.get(key);
+      if (value != null) {
+        extraPrefs[key] = value;
+      }
+    }
+
     return BackupData(
       version: _backupVersion,
       createdAt: DateTime.now(),
       connections: connections,
       settings: settings,
       quickControlConfigs: quickControlConfigs,
+      extraPrefs: extraPrefs,
     );
   }
 
@@ -172,6 +202,23 @@ class BackupService {
       final configData = backup.quickControlConfigs.first;
       await _prefs.setString(_quickControlKey, json.encode(configData));
       debugPrint('Restored quick control config');
+    }
+
+    // Восстанавливаем доп. настройки
+    if (restoreSettings && backup.extraPrefs.isNotEmpty) {
+      for (final entry in backup.extraPrefs.entries) {
+        final value = entry.value;
+        if (value is String) {
+          await _prefs.setString(entry.key, value);
+        } else if (value is int) {
+          await _prefs.setInt(entry.key, value);
+        } else if (value is bool) {
+          await _prefs.setBool(entry.key, value);
+        } else if (value is double) {
+          await _prefs.setDouble(entry.key, value);
+        }
+      }
+      debugPrint('Restored ${backup.extraPrefs.length} extra prefs');
     }
   }
 

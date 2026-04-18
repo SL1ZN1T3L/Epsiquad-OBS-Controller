@@ -9,6 +9,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../models/models.dart';
 import '../providers/obs_provider.dart';
 import '../widgets/screen_saver.dart';
+import '../widgets/volume_meter.dart';
 import 'profiles_screen.dart';
 
 class QuickControlScreen extends StatefulWidget {
@@ -824,6 +825,7 @@ class _QuickControlScreenState extends State<QuickControlScreen>
         inputName: inputName,
         initialVolume: source.volume,
         isMuted: source.isMuted,
+        volumeStream: provider.volumeStream,
         onVolumeChange: (value) => provider.setAudioVolume(inputName, value),
         onMuteToggle: () => provider.toggleAudioMute(inputName),
       ),
@@ -837,6 +839,7 @@ class _VolumeControlDialog extends StatefulWidget {
   final String inputName;
   final double initialVolume;
   final bool isMuted;
+  final Stream<Map<String, List<double>>>? volumeStream;
   final Function(double) onVolumeChange;
   final VoidCallback onMuteToggle;
 
@@ -844,6 +847,7 @@ class _VolumeControlDialog extends StatefulWidget {
     required this.inputName,
     required this.initialVolume,
     required this.isMuted,
+    this.volumeStream,
     required this.onVolumeChange,
     required this.onMuteToggle,
   });
@@ -855,12 +859,29 @@ class _VolumeControlDialog extends StatefulWidget {
 class _VolumeControlDialogState extends State<_VolumeControlDialog> {
   late double _volume;
   late bool _isMuted;
+  Timer? _throttle;
 
   @override
   void initState() {
     super.initState();
     _volume = widget.initialVolume;
     _isMuted = widget.isMuted;
+  }
+
+  @override
+  void dispose() {
+    _throttle?.cancel();
+    super.dispose();
+  }
+
+  void _onVolumeChanged(double value) {
+    setState(() => _volume = value);
+    // Отправляем не чаще чем раз в 80мс
+    if (_throttle == null || !_throttle!.isActive) {
+      _throttle = Timer(const Duration(milliseconds: 80), () {
+        widget.onVolumeChange(_volume);
+      });
+    }
   }
 
   @override
@@ -887,7 +908,17 @@ class _VolumeControlDialogState extends State<_VolumeControlDialog> {
                 color: _isMuted ? Colors.red : Colors.green,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
+            // Индикатор громкости
+            if (widget.volumeStream != null)
+              StreamBuilder<Map<String, List<double>>>(
+                stream: widget.volumeStream,
+                builder: (context, snapshot) {
+                  final levels = snapshot.data?[widget.inputName] ?? [];
+                  return VolumeMeter(levels: levels, isMuted: _isMuted);
+                },
+              ),
+            const SizedBox(height: 12),
             // Вертикальный слайдер
             Expanded(
               child: RotatedBox(
@@ -906,10 +937,9 @@ class _VolumeControlDialogState extends State<_VolumeControlDialog> {
                     min: 0.0,
                     max: 1.0,
                     divisions: 100,
-                    onChanged: (value) {
-                      setState(() => _volume = value);
-                    },
+                    onChanged: _onVolumeChanged,
                     onChangeEnd: (value) {
+                      _throttle?.cancel();
                       widget.onVolumeChange(value);
                     },
                   ),
