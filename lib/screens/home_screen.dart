@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:open_filex/open_filex.dart';
 import '../providers/obs_provider.dart';
 import '../services/log_service.dart';
+import '../services/power_service.dart';
 import '../services/update_service.dart';
 import '../widgets/widgets.dart';
 import 'connections_screen.dart';
@@ -885,7 +886,8 @@ class _HomeScenePreviewDialogState extends State<_HomeScenePreviewDialog> {
   bool _isLoading = true;
   bool _active = true;
   double _fps = 0;
-  static const _frameDuration = Duration(milliseconds: 33); // ~30fps
+  static const _frameDurationNormal = Duration(milliseconds: 33); // ~30fps
+  static const _frameDurationSaving = Duration(milliseconds: 200); // ~5fps
 
   @override
   void initState() {
@@ -901,6 +903,10 @@ class _HomeScenePreviewDialogState extends State<_HomeScenePreviewDialog> {
 
   Future<void> _runPreviewLoop() async {
     while (_active && mounted) {
+      final frameDuration = PowerService.instance.isPowerSaving
+          ? _frameDurationSaving
+          : _frameDurationNormal;
+
       final sw = Stopwatch()..start();
       final data = await widget.provider.getScenePreview(widget.sceneName);
       sw.stop();
@@ -908,15 +914,15 @@ class _HomeScenePreviewDialogState extends State<_HomeScenePreviewDialog> {
       if (!_active || !mounted) break;
 
       final elapsed = sw.elapsed;
-      if (elapsed < _frameDuration) {
-        await Future.delayed(_frameDuration - elapsed);
+      if (elapsed < frameDuration) {
+        await Future.delayed(frameDuration - elapsed);
       }
 
       if (!_active || !mounted) break;
 
       final totalMs = sw.elapsedMilliseconds > 0
-          ? sw.elapsedMilliseconds.clamp(_frameDuration.inMilliseconds, 10000)
-          : _frameDuration.inMilliseconds;
+          ? sw.elapsedMilliseconds.clamp(frameDuration.inMilliseconds, 10000)
+          : frameDuration.inMilliseconds;
 
       setState(() {
         _imageData = data;

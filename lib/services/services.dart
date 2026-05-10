@@ -7,3 +7,4 @@ export 'display_mode_service.dart';
 export 'log_service.dart';
 export 'autodiscovery_service.dart';
 export 'stats_history_service.dart';
+export 'power_service.dart';

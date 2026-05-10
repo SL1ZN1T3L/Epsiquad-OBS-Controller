@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
+import 'power_service.dart';
 
-/// Сервис адаптивного управления частотой экрана
-/// При активности пользователя - максимальная частота
-/// После 5 секунд бездействия - стандартная частота (60Hz)
+/// Сервис адаптивного управления частотой экрана.
+/// При активности пользователя — максимальная частота, через 5с
+/// бездействия — стандартная (60Hz).
+/// При активном режиме энергосбережения high refresh rate не включается.
 class DisplayModeService {
   static DisplayModeService? _instance;
   static DisplayModeService get instance => _instance ??= DisplayModeService._();
@@ -19,7 +21,6 @@ class DisplayModeService {
 
   static const _inactivityDuration = Duration(seconds: 5);
 
-  /// Инициализация сервиса - определяет доступные режимы
   Future<void> init() async {
     if (_initialized) return;
 
@@ -27,13 +28,9 @@ class DisplayModeService {
       final modes = await FlutterDisplayMode.supported;
       if (modes.isEmpty) return;
 
-      // Сортируем по частоте (от большей к меньшей)
       modes.sort((a, b) => b.refreshRate.compareTo(a.refreshRate));
 
-      // Максимальная частота
       _highRefreshMode = modes.first;
-
-      // Стандартная частота (около 60Hz или минимальная доступная)
       _standardMode = modes.firstWhere(
         (m) => m.refreshRate <= 60,
         orElse: () => modes.last,
@@ -44,26 +41,40 @@ class DisplayModeService {
 
       _initialized = true;
 
-      // Начинаем со стандартной частоты
+      // При смене power-профиля — если включился saving и сейчас high,
+      // принудительно опускаем до standard.
+      PowerService.instance.addListener(_onPowerProfileChanged);
+
       await _setStandardRefreshRate();
     } catch (e) {
       debugPrint('DisplayMode init error: $e');
     }
   }
 
-  /// Вызывать при любом пользовательском вводе
+  void _onPowerProfileChanged() {
+    if (!_initialized) return;
+    if (PowerService.instance.isPowerSaving && _isHighRefreshRate) {
+      _setStandardRefreshRate();
+    }
+  }
+
   void onUserActivity() {
     if (!_initialized) return;
 
-    // Сбрасываем таймер
     _inactivityTimer?.cancel();
 
-    // Включаем высокую частоту если ещё не включена
+    // В режиме энергосбережения high refresh rate не активируем вообще.
+    if (PowerService.instance.isPowerSaving) {
+      if (_isHighRefreshRate) {
+        _setStandardRefreshRate();
+      }
+      return;
+    }
+
     if (!_isHighRefreshRate) {
       _setHighRefreshRate();
     }
 
-    // Запускаем таймер бездействия
     _inactivityTimer = Timer(_inactivityDuration, () {
       _setStandardRefreshRate();
     });
@@ -95,5 +106,6 @@ class DisplayModeService {
 
   void dispose() {
     _inactivityTimer?.cancel();
+    PowerService.instance.removeListener(_onPowerProfileChanged);
   }
 }

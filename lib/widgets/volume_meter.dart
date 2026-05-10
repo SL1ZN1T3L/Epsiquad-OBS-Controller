@@ -29,10 +29,11 @@ class _VolumeMeterState extends State<VolumeMeter> {
 
   @override
   Widget build(BuildContext context) {
-    if (_channelCount == 0 && widget.levels.isEmpty) {
-      return const SizedBox(height: 6);
-    }
-
+    // Если у нас ни одного канала и пустые данные — всё равно рисуем одну
+    // пустую полоску. VolumeMeter инстанцируется только для аудио-источников
+    // (виджет родителя оборачивает его в `if (volumeStream != null)`),
+    // поэтому полоска уместна даже без данных от OBS — это нормально для
+    // источников, неактивных в текущей сцене.
     final count = _channelCount > 0 ? _channelCount : 1;
 
     return Column(

@@ -27,10 +27,13 @@ void main() async {
 
   log.i('App', 'Starting OBS Controller...');
 
-  await DisplayModeService.instance.init();
-
   final storage = await StorageService.init();
   log.i('App', 'Storage initialized');
+
+  // PowerService нужен до DisplayModeService — тот подписывается на профиль.
+  await PowerService.instance.init(storage);
+
+  await DisplayModeService.instance.init();
 
   final savedTheme = await AppTheme.loadSaved();
   if (savedTheme != null) {
@@ -85,18 +88,68 @@ class MyApp extends StatelessWidget {
             child: HomeScreen(),
           ),
           builder: (context, child) {
+            Widget content = _PowerAwareMediaQuery(
+              child: child ?? const SizedBox.shrink(),
+            );
             if (kDebugMode) {
-              return Banner(
+              content = Banner(
                 message: 'BETA',
                 location: BannerLocation.topEnd,
                 color: Colors.deepOrange,
-                child: child ?? const SizedBox.shrink(),
+                child: content,
               );
             }
-            return child ?? const SizedBox.shrink();
+            return content;
           },
         ),
       ),
+    );
+  }
+}
+
+/// Оборачивает дерево в MediaQuery с актуальным значением disableAnimations
+/// из PowerService. Реализован через StatefulWidget с локальным флагом —
+/// rebuild дерева происходит только когда isPowerSaving РЕАЛЬНО меняется,
+/// а не на каждый notifyListeners от опроса батареи.
+class _PowerAwareMediaQuery extends StatefulWidget {
+  final Widget child;
+  const _PowerAwareMediaQuery({required this.child});
+
+  @override
+  State<_PowerAwareMediaQuery> createState() => _PowerAwareMediaQueryState();
+}
+
+class _PowerAwareMediaQueryState extends State<_PowerAwareMediaQuery> {
+  late bool _disableAnimations;
+
+  @override
+  void initState() {
+    super.initState();
+    _disableAnimations = PowerService.instance.isPowerSaving;
+    PowerService.instance.addListener(_onPowerChanged);
+  }
+
+  @override
+  void dispose() {
+    PowerService.instance.removeListener(_onPowerChanged);
+    super.dispose();
+  }
+
+  void _onPowerChanged() {
+    final newValue = PowerService.instance.isPowerSaving;
+    if (_disableAnimations != newValue) {
+      setState(() => _disableAnimations = newValue);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    return MediaQuery(
+      data: mq.copyWith(
+        disableAnimations: _disableAnimations || mq.disableAnimations,
+      ),
+      child: widget.child,
     );
   }
 }

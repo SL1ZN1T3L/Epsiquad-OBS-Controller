@@ -6,6 +6,9 @@ import '../services/services.dart';
 
 const _tag = 'OBS';
 
+const int _maxReconnectAttempts = 15;
+const int _maxSyncFailures = 2;
+
 class OBSProvider extends ChangeNotifier {
   final OBSWebSocketService _obsService = OBSWebSocketService();
   final StorageService _storage;
@@ -42,6 +45,12 @@ class OBSProvider extends ChangeNotifier {
   int _reconnectAttempt = 0;
   bool _manualDisconnect = false;
 
+  // Health-check: подсчёт подряд идущих неудач периодических запросов.
+  // При превышении порога соединение считается мёртвым и форсируется
+  // disconnect → автоматический реконнект.
+  int _consecutiveSyncFailures = 0;
+  bool _forceDisconnectInProgress = false;
+
   Duration _localStreamDuration = Duration.zero;
   Duration _localRecordDuration = Duration.zero;
   DateTime? _streamStartTime;
@@ -58,6 +67,21 @@ class OBSProvider extends ChangeNotifier {
         if (_volumeListenerCount == 1) {
           // Первый слушатель — включаем InputVolumeMeters
           _obsService.reidentify(66047); // 511 | 65536
+        }
+        // Инициализируем моно-канал [0.0] для известных аудио-источников,
+        // если их ещё нет в кэше, и сразу пушим state — чтобы виджет
+        // получил начальные данные до прихода первого ивента от OBS.
+        bool changed = false;
+        for (final source in _audioSources) {
+          if (!_volumeLevels.containsKey(source.name)) {
+            _volumeLevels[source.name] = [0.0];
+            changed = true;
+          }
+        }
+        if (changed || _volumeLevels.isNotEmpty) {
+          // Микрозадержка чтобы StreamBuilder успел подписаться
+          Future.microtask(
+              () => _volumeController.add(Map.from(_volumeLevels)));
         }
       },
       onCancel: () {
@@ -100,6 +124,10 @@ class OBSProvider extends ChangeNotifier {
     _obsService.onError = _onError;
     _obsService.onEvent = _handleEvent;
 
+    // При изменении профиля энергосбережения пересоздаём таймеры
+    // с актуальными интервалами.
+    PowerService.instance.addListener(_onPowerProfileChanged);
+
     final autoConnect = await _storage.getSetting('autoConnect', true);
     if (autoConnect) {
       final defaultConnection = await _storage.getDefaultConnection();
@@ -112,10 +140,26 @@ class OBSProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> connect(OBSConnection connection) async {
+  void _onPowerProfileChanged() {
+    if (!isConnected) return;
+    log.d(_tag,
+        'Power profile changed → restarting timers (saving=${PowerService.instance.isPowerSaving})');
+    _startStatusTimer();
+    if (_statsSnapshotTimer != null) {
+      _statsSnapshotTimer?.cancel();
+      _statsSnapshotTimer = null;
+      _startStatsSnapshotTimer();
+    }
+  }
+
+  Future<bool> connect(OBSConnection connection,
+      {bool isReconnect = false}) async {
     log.i(_tag, 'Connecting to ${connection.name} (${connection.host}:${connection.port})');
     if (_isConnecting) return false;
 
+    if (!isReconnect) {
+      _reconnectAttempt = 0;
+    }
     _manualDisconnect = false;
     _isConnecting = true;
     _connectionError = null;
@@ -144,6 +188,8 @@ class OBSProvider extends ChangeNotifier {
     _reconnectTimer?.cancel();
     _reconnectCountdownTimer?.cancel();
     _reconnectAttempt = 0;
+    _consecutiveSyncFailures = 0;
+    _forceDisconnectInProgress = false;
     await _obsService.disconnect();
     await _foregroundService.stop();
     _statusTimer?.cancel();
@@ -169,6 +215,8 @@ class OBSProvider extends ChangeNotifier {
     _reconnectTimer?.cancel();
     _reconnectCountdownTimer?.cancel();
     _reconnectAttempt = 0;
+    _consecutiveSyncFailures = 0;
+    _forceDisconnectInProgress = false;
 
     if (_currentConnection != null) {
       final updated =
@@ -208,11 +256,24 @@ class OBSProvider extends ChangeNotifier {
     _reconnectCountdownTimer?.cancel();
     _reconnectAttempt++;
 
+    if (_reconnectAttempt > _maxReconnectAttempts) {
+      log.w(_tag,
+          'Auto-reconnect: max attempts ($_maxReconnectAttempts) reached, giving up');
+      _connectionError =
+          'Не удалось переподключиться после $_maxReconnectAttempts попыток. Проверьте OBS и попробуйте снова.';
+      _reconnectAttempt = 0;
+      _foregroundService.sendStatus('Переподключение остановлено');
+      notifyListeners();
+      return;
+    }
+
     final delaySec = (3 * (1 << (_reconnectAttempt - 1).clamp(0, 3))).clamp(3, 30);
-    log.i(_tag, 'Auto-reconnect attempt $_reconnectAttempt in ${delaySec}s');
+    log.i(_tag,
+        'Auto-reconnect attempt $_reconnectAttempt/$_maxReconnectAttempts in ${delaySec}s');
 
     int remaining = delaySec;
-    _connectionError = 'Переподключение через $remainingс... (попытка $_reconnectAttempt)';
+    _connectionError =
+        'Переподключение через $remainingс... (попытка $_reconnectAttempt/$_maxReconnectAttempts)';
     notifyListeners();
 
     _reconnectCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -221,7 +282,8 @@ class OBSProvider extends ChangeNotifier {
         timer.cancel();
         return;
       }
-      _connectionError = 'Переподключение через $remainingс... (попытка $_reconnectAttempt)';
+      _connectionError =
+          'Переподключение через $remainingс... (попытка $_reconnectAttempt/$_maxReconnectAttempts)';
       notifyListeners();
     });
 
@@ -233,7 +295,7 @@ class OBSProvider extends ChangeNotifier {
       notifyListeners();
 
       log.i(_tag, 'Auto-reconnect: trying...');
-      final success = await connect(_currentConnection!);
+      final success = await connect(_currentConnection!, isReconnect: true);
       if (!success && !_manualDisconnect) {
         _scheduleReconnect();
       }
@@ -244,6 +306,64 @@ class OBSProvider extends ChangeNotifier {
     _reconnectTimer?.cancel();
     _reconnectCountdownTimer?.cancel();
     _reconnectAttempt = 0;
+  }
+
+  // ==================== Health-check ====================
+
+  /// Регистрирует успешный обмен с OBS — сбрасывает счётчик неудач.
+  void _onSyncSuccess() {
+    if (_consecutiveSyncFailures > 0) {
+      log.d(_tag, 'Sync recovered after $_consecutiveSyncFailures failures');
+      _consecutiveSyncFailures = 0;
+    }
+  }
+
+  /// Регистрирует неудачу обмена с OBS. При $_maxSyncFailures подряд
+  /// форсирует disconnect (TCP мог зависнуть, ответов нет).
+  void _onSyncFailure(String reason) {
+    if (!isConnected || _forceDisconnectInProgress) return;
+    _consecutiveSyncFailures++;
+    log.w(_tag,
+        'Sync failure #$_consecutiveSyncFailures/$_maxSyncFailures: $reason');
+    if (_consecutiveSyncFailures >= _maxSyncFailures) {
+      _forceDisconnect('OBS не отвечает');
+    }
+  }
+
+  /// Принудительно закрывает соединение, считая его «фантомным».
+  /// Срабатывает onDisconnected → автоматический реконнект.
+  void _forceDisconnect(String reason) {
+    if (_forceDisconnectInProgress) return;
+    _forceDisconnectInProgress = true;
+    _consecutiveSyncFailures = 0;
+    log.w(_tag, 'Forcing disconnect: $reason');
+    _connectionError = reason;
+    _obsService.disconnect();
+  }
+
+  /// Через [delayMs] выполняет [verify]. Используется для post-action
+  /// подтверждения от OBS — если оно не пришло вовремя или не совпало,
+  /// откатывает оптимистичное обновление UI и одновременно работает
+  /// как health-check.
+  void _verifyAfter(
+    String tag,
+    Future<void> Function() verify, {
+    int delayMs = 300,
+  }) {
+    Timer(Duration(milliseconds: delayMs), () async {
+      if (!isConnected || _manualDisconnect || _forceDisconnectInProgress) {
+        return;
+      }
+      try {
+        await verify();
+        _onSyncSuccess();
+      } on TimeoutException {
+        _onSyncFailure('verify timeout [$tag]');
+      } catch (e) {
+        // Ошибки на уровне OBS (result=false) не считаем сетевыми проблемами.
+        log.w(_tag, 'Post-action verify [$tag] error', e.toString());
+      }
+    });
   }
 
   void _onError(String error) {
@@ -332,6 +452,15 @@ class OBSProvider extends ChangeNotifier {
         obsVersion: version['obsVersion'] as String?,
         websocketVersion: version['obsWebSocketVersion'] as String?,
       );
+      _onSyncSuccess();
+    } on TimeoutException catch (e) {
+      // Первый запрос упал с timeout — соединение фантомное.
+      // Прерываем синхронизацию и форсируем disconnect.
+      log.e(_tag, 'Sync error (version) timeout', e.toString());
+      _onSyncFailure('fullSync version timeout');
+      _forceDisconnect('OBS не отвечает');
+      onProgress?.call(1.0, 'Не удалось синхронизироваться');
+      return;
     } catch (e) {
       log.e(_tag, 'Sync error (version)', e.toString());
     }
@@ -443,6 +572,32 @@ class OBSProvider extends ChangeNotifier {
   Future<void> _fetchAudioSources() async {
     try {
       _audioSources = await _obsService.getInputList();
+
+      // Для каждого аудио-источника инициализируем моно-канал [0.0], если
+      // данных ещё нет. Это даёт VolumeMeter виджету «канал есть, уровень 0»
+      // — он сразу рисует пустую полоску, а не невидимый SizedBox.
+      // OBS не всегда шлёт InputVolumeMeters для неактивных в сцене
+      // источников или шлёт пустой inputLevelsMul, и без этой инициализации
+      // полоска у таких источников никогда не появилась бы.
+      final currentNames = _audioSources.map((s) => s.name).toSet();
+      bool changed = false;
+      for (final name in currentNames) {
+        if (!_volumeLevels.containsKey(name)) {
+          _volumeLevels[name] = [0.0];
+          changed = true;
+        }
+      }
+      // Чистим мёртвые источники, которых больше нет
+      for (final name in _volumeLevels.keys.toList()) {
+        if (!currentNames.contains(name)) {
+          _volumeLevels.remove(name);
+          changed = true;
+        }
+      }
+      if (changed && _volumeListenerCount > 0) {
+        _volumeController.add(Map.from(_volumeLevels));
+      }
+
       notifyListeners();
     } catch (e) {
       log.e(_tag, 'Error fetching audio sources', e.toString());
@@ -569,7 +724,11 @@ class OBSProvider extends ChangeNotifier {
     _statusTimer?.cancel();
     _localTimeTimer?.cancel();
 
-    _statusTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // При активном энергосбережении — реже опрашиваем OBS.
+    final saving = PowerService.instance.isPowerSaving;
+    final statusInterval = Duration(seconds: saving ? 10 : 5);
+
+    _statusTimer = Timer.periodic(statusInterval, (_) {
       if (isConnected) {
         _syncStatusFromOBS();
       }
@@ -693,8 +852,16 @@ class OBSProvider extends ChangeNotifier {
       } catch (e) {
         log.w(_tag, 'Error fetching stats', e.toString());
       }
+
+      // Основные запросы (stream/record status) прошли — соединение живое.
+      _onSyncSuccess();
+    } on TimeoutException catch (e) {
+      log.w(_tag, 'Sync status timeout', e.toString());
+      _onSyncFailure('status timeout');
     } catch (e) {
       log.w(_tag, 'Error syncing status', e.toString());
+      // Не сетевая ошибка (например, OBS вернул result=false) — не трогаем
+      // счётчик, чтобы случайные отказы не приводили к ложному disconnect.
     }
   }
 
@@ -735,6 +902,17 @@ class OBSProvider extends ChangeNotifier {
     _obsService.setCurrentProgramScene(sceneName).catchError((e) {
       log.e(_tag, 'Error switching scene', e.toString());
     });
+
+    // Подтверждение от OBS — корректирует UI, если событие
+    // CurrentProgramSceneChanged не пришло.
+    _verifyAfter('scene', () async {
+      final actual = await _obsService.getCurrentProgramScene();
+      if (actual != null && actual != sceneName) {
+        log.w(_tag,
+            'Scene mismatch: ui=$sceneName, obs=$actual — correcting');
+        _updateCurrentScene(actual);
+      }
+    });
   }
 
   Future<void> toggleSceneItem(
@@ -746,6 +924,15 @@ class OBSProvider extends ChangeNotifier {
     _obsService.setSceneItemEnabled(sceneName, itemId, enabled).catchError((e) {
       log.e(_tag, 'Error toggling scene item', e.toString());
       _updateSceneItemLocally(sceneName, itemId, !enabled);
+    });
+
+    _verifyAfter('sceneItem:$sceneName/$itemId', () async {
+      final actual = await _obsService.getSceneItemEnabled(sceneName, itemId);
+      if (actual != null && actual != enabled) {
+        log.w(_tag,
+            'SceneItem $sceneName/$itemId mismatch: ui=$enabled, obs=$actual — correcting');
+        _updateSceneItemLocally(sceneName, itemId, actual);
+      }
     });
   }
 
@@ -962,6 +1149,19 @@ class OBSProvider extends ChangeNotifier {
     _obsService.toggleInputMute(inputName).catchError((e) {
       log.e(_tag, 'Error toggling mute for $inputName', e.toString());
     });
+
+    // Подтверждаем у OBS реальное состояние через 300мс — на случай, если
+    // событие InputMuteStateChanged не пришло (рассинхрон).
+    _verifyAfter('mute:$inputName', () async {
+      final actual = await _obsService.getInputMute(inputName);
+      if (actual == null) return;
+      final i = _audioSources.indexWhere((s) => s.name == inputName);
+      if (i != -1 && _audioSources[i].isMuted != actual) {
+        log.w(_tag,
+            'Mute state mismatch for $inputName: ui=${_audioSources[i].isMuted}, obs=$actual — correcting');
+        _updateAudioMute(inputName, actual);
+      }
+    });
   }
 
   Future<void> setAudioVolume(String inputName, double volume) async {
@@ -1102,13 +1302,28 @@ class OBSProvider extends ChangeNotifier {
           channelPeaks.add(peak > 0 ? pow(peak, 0.25).toDouble() : 0.0);
         }
       }
-      _volumeLevels[name] = channelPeaks;
+      // Если OBS прислал пустой inputLevelsMul — источник «есть, но молчит»
+      // (часто бывает для глобальных аудио или неактивных в сцене).
+      // Сохраняем хотя бы моно-канал [0.0], чтобы полоска оставалась видимой.
+      if (channelPeaks.isEmpty) {
+        _volumeLevels[name] = _volumeLevels[name]?.isNotEmpty == true
+            ? List.filled(_volumeLevels[name]!.length, 0.0)
+            : [0.0];
+      } else {
+        _volumeLevels[name] = channelPeaks;
+      }
     }
 
-    // Обнуляем уровни для неактивных источников
+    // Источники, которых не было в этом батче, тоже считаем молчащими, но
+    // не убираем — полоска должна оставаться видимой.
     for (final name in _volumeLevels.keys.toList()) {
       if (!activeNames.contains(name)) {
-        _volumeLevels[name] = [];
+        final existing = _volumeLevels[name];
+        if (existing != null && existing.isNotEmpty) {
+          _volumeLevels[name] = List.filled(existing.length, 0.0);
+        } else {
+          _volumeLevels[name] = [0.0];
+        }
       }
     }
 
@@ -1117,8 +1332,12 @@ class OBSProvider extends ChangeNotifier {
 
   void _startStatsSnapshotTimer() {
     if (_statsSnapshotTimer != null) return;
+    final saving = PowerService.instance.isPowerSaving;
+    final interval = Duration(
+      seconds: saving ? kSnapshotIntervalSeconds * 3 : kSnapshotIntervalSeconds,
+    );
     _statsSnapshotTimer = Timer.periodic(
-      const Duration(seconds: kSnapshotIntervalSeconds),
+      interval,
       (_) => _collectStatsSnapshot(),
     );
   }
@@ -1243,6 +1462,7 @@ class OBSProvider extends ChangeNotifier {
     _reconnectTimer?.cancel();
     _reconnectCountdownTimer?.cancel();
     _statsSnapshotTimer?.cancel();
+    PowerService.instance.removeListener(_onPowerProfileChanged);
     _volumeController.close();
     _obsService.dispose();
     super.dispose();

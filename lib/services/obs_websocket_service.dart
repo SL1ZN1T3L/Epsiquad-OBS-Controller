@@ -211,8 +211,9 @@ class OBSWebSocketService {
 
   Future<Map<String, dynamic>> _sendRequest(
     String requestType,
-    Map<String, dynamic>? requestData,
-  ) async {
+    Map<String, dynamic>? requestData, {
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
     if (_channel == null || !_isConnected) {
       throw Exception('Not connected');
     }
@@ -234,7 +235,7 @@ class OBSWebSocketService {
 
     try {
       final response = await completer.future.timeout(
-        const Duration(seconds: 15),
+        timeout,
         onTimeout: () {
           _responseCompleters.remove(requestId);
           throw TimeoutException('Request timeout: $requestType');
@@ -363,51 +364,106 @@ class OBSWebSocketService {
 
   // ==================== Аудио ====================
 
+  /// Возвращает true, если ответ от OBS содержит requestStatus.result == true.
+  bool _isOk(Map<String, dynamic> response) {
+    return response['d']?['requestStatus']?['result'] == true;
+  }
+
+  /// Быстрая проверка inputKind на принадлежность к аудио-типу.
+  /// Покрывает Windows (wasapi, в т.ч. process_output_capture для захвата
+  /// звука приложения), Linux (pulse, alsa, jack, pipewire),
+  /// macOS (coreaudio), а также медиа-источники (ffmpeg, vlc).
+  bool _looksLikeAudioKind(String kind) {
+    return kind.contains('wasapi') ||
+        kind.contains('pulse') ||
+        kind.contains('coreaudio') ||
+        kind.contains('alsa') ||
+        kind.contains('jack') ||
+        kind.contains('pipewire') ||
+        kind.contains('audio') ||
+        kind.contains('ffmpeg') ||
+        kind.contains('vlc');
+  }
+
   Future<List<OBSAudioSource>> getInputList() async {
     final response = await _sendRequest('GetInputList', null);
     final inputs = response['d']?['responseData']?['inputs'] as List? ?? [];
 
-    final audioSources = <OBSAudioSource>[];
+    // Шаг 1. Быстрый kind-фильтр для очевидно аудио-источников.
+    // Шаг 2. Для остальных — probe через GetInputMute параллельно: если OBS
+    // отвечает успехом, значит у источника есть аудио-выход (это покрывает
+    // нестандартные плагины захвата звука приложения, у которых inputKind
+    // не попадает в список выше).
+    final knownAudio = <Map<String, dynamic>>[];
+    final unknown = <Map<String, dynamic>>[];
+
     for (final input in inputs) {
-      final name = input['inputName'] as String;
-      final kind = input['inputKind'] as String? ?? 'unknown';
-
-      // Аудио-устройства + медиа-источники со звуком
-      if (kind.contains('wasapi') ||
-          kind.contains('pulse') ||
-          kind.contains('coreaudio') ||
-          kind.contains('alsa') ||
-          kind.contains('jack') ||
-          kind.contains('audio') ||
-          kind.contains('ffmpeg') ||
-          kind.contains('vlc')) {
-        try {
-          final muteResponse =
-              await _sendRequest('GetInputMute', {'inputName': name});
-          final isMuted =
-              muteResponse['d']?['responseData']?['inputMuted'] as bool? ??
-                  false;
-
-          final volumeResponse =
-              await _sendRequest('GetInputVolume', {'inputName': name});
-          final volumeMul =
-              (volumeResponse['d']?['responseData']?['inputVolumeMul'] as num?)
-                      ?.toDouble() ??
-                  1.0;
-
-          audioSources.add(OBSAudioSource(
-            name: name,
-            kind: kind,
-            isMuted: isMuted,
-            volume: _mulToSlider(volumeMul),
-          ));
-        } catch (e) {
-          log.w(_tag, 'Error getting audio info for $name', e.toString());
-        }
+      final kind = (input['inputKind'] as String? ?? '').toLowerCase();
+      if (_looksLikeAudioKind(kind)) {
+        knownAudio.add(Map<String, dynamic>.from(input));
+      } else {
+        unknown.add(Map<String, dynamic>.from(input));
       }
     }
 
-    log.d(_tag, 'Audio sources: ${audioSources.length}');
+    // Probe непрошедших источников параллельно.
+    final probeResults = await Future.wait(unknown.map((input) async {
+      final name = input['inputName'] as String;
+      try {
+        final res = await _sendRequest('GetInputMute', {'inputName': name});
+        return _isOk(res) ? input : null;
+      } catch (_) {
+        return null;
+      }
+    }));
+
+    final detected = [
+      ...knownAudio,
+      ...probeResults.whereType<Map<String, dynamic>>(),
+    ];
+
+    // Получение mute/volume для всех обнаруженных аудио-источников.
+    final audioSources = await Future.wait(detected.map((input) async {
+      final name = input['inputName'] as String;
+      final kind = input['inputKind'] as String? ?? 'unknown';
+
+      bool isMuted = false;
+      double volumeMul = 1.0;
+
+      try {
+        final muteResponse =
+            await _sendRequest('GetInputMute', {'inputName': name});
+        if (_isOk(muteResponse)) {
+          isMuted = muteResponse['d']?['responseData']?['inputMuted'] as bool? ??
+              false;
+        }
+      } catch (e) {
+        log.w(_tag, 'GetInputMute failed for $name', e.toString());
+      }
+
+      try {
+        final volumeResponse =
+            await _sendRequest('GetInputVolume', {'inputName': name});
+        if (_isOk(volumeResponse)) {
+          volumeMul =
+              (volumeResponse['d']?['responseData']?['inputVolumeMul'] as num?)
+                      ?.toDouble() ??
+                  1.0;
+        }
+      } catch (e) {
+        log.w(_tag, 'GetInputVolume failed for $name', e.toString());
+      }
+
+      return OBSAudioSource(
+        name: name,
+        kind: kind,
+        isMuted: isMuted,
+        volume: _mulToSlider(volumeMul),
+      );
+    }));
+
+    log.d(_tag,
+        'Audio sources: ${audioSources.length} (kind-matched: ${knownAudio.length}, probed: ${detected.length - knownAudio.length})');
     return audioSources;
   }
 
@@ -445,6 +501,42 @@ class OBSWebSocketService {
       'inputName': inputName,
       'inputVolumeMul': volumeMul,
     });
+  }
+
+  /// Возвращает текущее состояние mute. Используется для post-verify.
+  Future<bool?> getInputMute(String inputName) async {
+    final response = await _sendRequest(
+      'GetInputMute',
+      {'inputName': inputName},
+      timeout: const Duration(seconds: 5),
+    );
+    if (!_isOk(response)) return null;
+    return response['d']?['responseData']?['inputMuted'] as bool?;
+  }
+
+  /// Возвращает текущую громкость (slider 0..1). Используется для post-verify.
+  Future<double?> getInputVolume(String inputName) async {
+    final response = await _sendRequest(
+      'GetInputVolume',
+      {'inputName': inputName},
+      timeout: const Duration(seconds: 5),
+    );
+    if (!_isOk(response)) return null;
+    final mul = (response['d']?['responseData']?['inputVolumeMul'] as num?)
+        ?.toDouble();
+    if (mul == null) return null;
+    return _mulToSlider(mul);
+  }
+
+  /// Возвращает текущее состояние видимости элемента сцены. Для post-verify.
+  Future<bool?> getSceneItemEnabled(String sceneName, int sceneItemId) async {
+    final response = await _sendRequest(
+      'GetSceneItemEnabled',
+      {'sceneName': sceneName, 'sceneItemId': sceneItemId},
+      timeout: const Duration(seconds: 5),
+    );
+    if (!_isOk(response)) return null;
+    return response['d']?['responseData']?['sceneItemEnabled'] as bool?;
   }
 
   double _sliderToMul(double slider) {

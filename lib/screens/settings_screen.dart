@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'log_screen.dart';
 import '../services/log_service.dart';
+import '../services/power_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -149,6 +150,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 8),
 
           _ScreenSaverSettingsCard(),
+
+          const SizedBox(height: 24),
+
+          // Секция энергосбережения
+          _buildSectionHeader('Энергосбережение'),
+          const SizedBox(height: 8),
+
+          const _PowerSaveSettingsCard(),
 
           const SizedBox(height: 24),
 
@@ -1424,6 +1433,192 @@ class _LogSettingsCardState extends State<_LogSettingsCard> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+// =============== Энергосбережение ===============
+
+class _PowerSaveSettingsCard extends StatefulWidget {
+  const _PowerSaveSettingsCard();
+
+  @override
+  State<_PowerSaveSettingsCard> createState() => _PowerSaveSettingsCardState();
+}
+
+class _PowerSaveSettingsCardState extends State<_PowerSaveSettingsCard> {
+  @override
+  void initState() {
+    super.initState();
+    PowerService.instance.addListener(_update);
+  }
+
+  @override
+  void dispose() {
+    PowerService.instance.removeListener(_update);
+    super.dispose();
+  }
+
+  void _update() {
+    if (mounted) setState(() {});
+  }
+
+  String _modeLabel(PowerMode mode) {
+    switch (mode) {
+      case PowerMode.auto:
+        return 'Автоматически';
+      case PowerMode.always:
+        return 'Всегда включено';
+      case PowerMode.never:
+        return 'Никогда';
+    }
+  }
+
+  String _modeDescription(PowerMode mode) {
+    switch (mode) {
+      case PowerMode.auto:
+        return 'Активируется при низком заряде (≤20%) или системном режиме энергосбережения';
+      case PowerMode.always:
+        return 'Режим экономии активен всегда — анимации, частота экрана и поллинг ограничены';
+      case PowerMode.never:
+        return 'Без адаптации — приложение работает в обычном режиме всегда';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final power = PowerService.instance;
+    final scheme = Theme.of(context).colorScheme;
+    final isSaving = power.isPowerSaving;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isSaving ? Icons.battery_saver : Icons.battery_full,
+                  color: isSaving ? scheme.tertiary : scheme.primary,
+                  size: 28,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Батарея: ${power.level}%${power.isCharging ? " ⚡" : ""}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isSaving
+                            ? 'Режим экономии активен'
+                            : 'Обычный режим',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isSaving
+                              ? scheme.tertiary
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (isSaving) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: scheme.tertiaryContainer.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline,
+                        size: 18, color: scheme.onTertiaryContainer),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Анимации отключены, частота экрана 60Hz, опрос OBS реже',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onTertiaryContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const Divider(height: 24),
+            const Text(
+              'Режим работы',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            ...PowerMode.values.map((mode) {
+              final selected = power.mode == mode;
+              return InkWell(
+                onTap: () => PowerService.instance.setMode(mode),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        selected
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                        color: selected
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _modeLabel(mode),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _modeDescription(mode),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
       ),
     );
   }

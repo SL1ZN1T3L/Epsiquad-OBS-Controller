@@ -1,7 +1,7 @@
 name: obs_controller
 description: Professional OBS Studio remote control application
 publish_to: ''
-version: 3.7.0
+version: 3.7.1+20260511
 
 environment:
   sdk: ^3.6.0
@@ -40,6 +40,9 @@ dependencies:
   
   # Wakelock
   wakelock_plus: ^1.2.8
+
+  # Battery
+  battery_plus: ^6.2.0
   
   # High Refresh Rate
   flutter_displaymode: ^0.7.0
