@@ -28,7 +28,9 @@ class ConnectionStatusBar extends StatelessWidget {
     if (isConnecting) {
       bgColor = Colors.orange;
       icon = Icons.sync;
-      text = 'Подключение...';
+      // При автопереподключении провайдер передаёт текст с номером
+      // попытки — показываем его вместо голого «Подключение...».
+      text = error ?? 'Подключение...';
     } else if (isConnected) {
       bgColor = Colors.green;
       icon = Icons.check_circle;

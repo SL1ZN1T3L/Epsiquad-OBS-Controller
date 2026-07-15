@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../models/models.dart';
 import '../providers/obs_provider.dart';
+import '../services/services.dart';
 import '../widgets/screen_saver.dart';
 import '../widgets/volume_meter.dart';
 import 'profiles_screen.dart';
@@ -229,7 +230,6 @@ class _QuickControlScreenState extends State<QuickControlScreen>
   void _reorderButtons(int oldIndex, int newIndex) {
     setState(() {
       final buttons = List<QuickButtonConfig>.from(_config.buttons);
-      if (newIndex > oldIndex) newIndex--;
       final item = buttons.removeAt(oldIndex);
       buttons.insert(newIndex, item);
       _config = QuickControlConfig(
@@ -466,7 +466,7 @@ class _QuickControlScreenState extends State<QuickControlScreen>
     return ReorderableListView.builder(
       padding: const EdgeInsets.only(left: 8, right: 8, top: 8, bottom: 80),
       itemCount: _config.buttons.length,
-      onReorder: _reorderButtons,
+      onReorderItem: _reorderButtons,
       itemBuilder: (context, index) {
         final button = _config.buttons[index];
         return Card(
@@ -675,11 +675,14 @@ class _QuickControlScreenState extends State<QuickControlScreen>
           HapticFeedback.mediumImpact();
           final path =
               await provider.saveScreenshot(sourceName: config.targetName);
-          if (mounted && path != null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Скриншот сохранён: $path')),
-            );
-          }
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(path != null
+                  ? 'Скриншот сохранён на ПК: $path'
+                  : 'Не удалось сохранить скриншот'),
+            ),
+          );
         };
         break;
 
@@ -1601,7 +1604,8 @@ class _ScenePreviewDialogState extends State<_ScenePreviewDialog> {
   bool _isLoading = true;
   bool _active = true;
   double _fps = 0;
-  static const _frameDuration = Duration(milliseconds: 33); // ~30fps
+  static const _frameDurationNormal = Duration(milliseconds: 33); // ~30fps
+  static const _frameDurationSaving = Duration(milliseconds: 200); // ~5fps
 
   @override
   void initState() {
@@ -1617,6 +1621,10 @@ class _ScenePreviewDialogState extends State<_ScenePreviewDialog> {
 
   Future<void> _runPreviewLoop() async {
     while (_active && mounted) {
+      final frameDuration = PowerService.instance.isPowerSaving
+          ? _frameDurationSaving
+          : _frameDurationNormal;
+
       final sw = Stopwatch()..start();
       final data = await widget.provider.getScenePreview(widget.sceneName);
       sw.stop();
@@ -1624,15 +1632,15 @@ class _ScenePreviewDialogState extends State<_ScenePreviewDialog> {
       if (!_active || !mounted) break;
 
       final elapsed = sw.elapsed;
-      if (elapsed < _frameDuration) {
-        await Future.delayed(_frameDuration - elapsed);
+      if (elapsed < frameDuration) {
+        await Future.delayed(frameDuration - elapsed);
       }
 
       if (!_active || !mounted) break;
 
       final totalMs = sw.elapsedMilliseconds > 0
-          ? sw.elapsedMilliseconds.clamp(_frameDuration.inMilliseconds, 10000)
-          : _frameDuration.inMilliseconds;
+          ? sw.elapsedMilliseconds.clamp(frameDuration.inMilliseconds, 10000)
+          : frameDuration.inMilliseconds;
 
       setState(() {
         _imageData = data;

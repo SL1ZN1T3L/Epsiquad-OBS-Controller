@@ -72,7 +72,7 @@ class AutoDiscoveryService {
       final sw = Stopwatch()..start();
       final socket = await Socket.connect(ip, port, timeout: timeout);
       sw.stop();
-      await socket.close();
+      socket.destroy();
       return DiscoveredOBS(
         ip: ip,
         port: port,

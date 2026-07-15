@@ -39,7 +39,12 @@ class OBSWebSocketService {
       final uri = Uri.parse('ws://${connection.host}:${connection.port}');
       _channel = WebSocketChannel.connect(uri);
 
-      await _channel!.ready;
+      // ОС может держать попытку TCP-соединения к недоступному хосту
+      // минутами — без таймаута реконнект зависает на этом await.
+      await _channel!.ready.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw TimeoutException('TCP connection timeout'),
+      );
       log.d(_tag, 'WebSocket ready');
 
       _subscription = _channel!.stream.listen(
@@ -105,19 +110,46 @@ class OBSWebSocketService {
       throw Exception('Identify failed: op=${identifyResponse['op']}');
     } on TimeoutException catch (e) {
       log.e(_tag, 'Connection timeout', e.toString());
+      await _cleanupFailedConnection();
       _handleError('Connection timeout');
       return false;
     } on WebSocketChannelException catch (e) {
       log.e(_tag, 'WebSocket connection refused', e.toString());
+      await _cleanupFailedConnection();
       _handleError('Connection refused: $e');
       return false;
     } catch (e) {
       log.e(_tag, 'Connection failed', e.toString());
-      _handleError('Connection failed: $e');
+      await _cleanupFailedConnection();
+      if (e.toString().contains('auth_failed')) {
+        _handleError('auth_failed');
+      } else {
+        _handleError('Connection failed: $e');
+      }
       return false;
     } finally {
       _isConnecting = false;
     }
+  }
+
+  /// Освобождает канал и подписку после неудачной попытки подключения,
+  /// чтобы повторные попытки реконнекта не накапливали открытые сокеты.
+  Future<void> _cleanupFailedConnection() async {
+    await _subscription?.cancel();
+    _subscription = null;
+    final channel = _channel;
+    _channel = null;
+    if (channel != null) {
+      // Не ждём завершения close: на зависшем TCP-подключении оно
+      // блокируется до таймаута ОС — ровно то, чего мы избегаем.
+      channel.sink.close(status.normalClosure).catchError((_) {});
+    }
+    for (final completer in _responseCompleters.values) {
+      if (!completer.isCompleted) {
+        completer.completeError('Disconnected');
+      }
+    }
+    _responseCompleters.clear();
   }
 
   Future<void> disconnect() async {
@@ -139,7 +171,11 @@ class OBSWebSocketService {
     _subscription = null;
 
     try {
-      await _channel?.sink.close(status.normalClosure);
+      // На мёртвом TCP-соединении close может ждать таймаута ОС —
+      // ограничиваем, иначе force disconnect зависает.
+      await _channel?.sink
+          .close(status.normalClosure)
+          .timeout(const Duration(seconds: 2));
     } catch (e) {
       log.w(_tag, 'Error closing WebSocket', e.toString());
     }
@@ -202,6 +238,20 @@ class OBSWebSocketService {
   }
 
   void _handleDisconnect(String reason) {
+    // 4009 — AuthenticationFailed по протоколу obs-websocket:
+    // OBS закрывает соединение сразу после Identify с неверным паролем.
+    final closeCode = _channel?.closeCode;
+    final detail = closeCode == 4009 ? 'auth_failed' : reason;
+
+    // Завершаем висящие запросы (включая Identify при неверном пароле),
+    // иначе connect() будет ждать полный таймаут вместо мгновенной ошибки.
+    for (final completer in _responseCompleters.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(detail);
+      }
+    }
+    _responseCompleters.clear();
+
     final wasConnected = _isConnected;
     _isConnected = false;
     if (wasConnected) {
@@ -681,7 +731,8 @@ class OBSWebSocketService {
 
   // ==================== Скриншоты ====================
 
-  Future<String> saveSourceScreenshot({
+  /// Сохраняет скриншот на машине с OBS. Возвращает true при успехе.
+  Future<bool> saveSourceScreenshot({
     required String sourceName,
     required String imageFilePath,
     String imageFormat = 'png',
@@ -689,7 +740,7 @@ class OBSWebSocketService {
     int? imageHeight,
     int? imageCompressionQuality,
   }) async {
-    await _sendRequest('SaveSourceScreenshot', {
+    final response = await _sendRequest('SaveSourceScreenshot', {
       'sourceName': sourceName,
       'imageFormat': imageFormat,
       'imageFilePath': imageFilePath,
@@ -698,7 +749,15 @@ class OBSWebSocketService {
       if (imageCompressionQuality != null)
         'imageCompressionQuality': imageCompressionQuality,
     });
-    return imageFilePath;
+    return _isOk(response);
+  }
+
+  /// Возвращает папку записи OBS — гарантированно доступный для записи
+  /// путь на машине с OBS.
+  Future<String?> getRecordDirectory() async {
+    final response = await _sendRequest('GetRecordDirectory', null);
+    if (!_isOk(response)) return null;
+    return response['d']?['responseData']?['recordDirectory'] as String?;
   }
 
   Future<String?> getSourceScreenshotBase64({

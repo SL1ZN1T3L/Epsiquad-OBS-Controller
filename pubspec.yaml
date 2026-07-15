@@ -1,7 +1,7 @@
 name: obs_controller
 description: Professional OBS Studio remote control application
 publish_to: ''
-version: 3.7.1+20260511
+version: 3.7.2+20260716
 
 environment:
   sdk: ^3.6.0
@@ -19,7 +19,7 @@ dependencies:
   
   # Network
   web_socket_channel: ^3.0.3
-  network_info_plus: ^7.0.0
+  network_info_plus: ^8.2.1
   
   # Crypto
   crypto: ^3.0.6
@@ -30,10 +30,10 @@ dependencies:
   
   # Utils
   uuid: ^4.5.2
-  package_info_plus: ^9.0.0
+  package_info_plus: ^10.2.1
   
   # Foreground Service
-  flutter_foreground_task: ^9.0.0
+  flutter_foreground_task: ^10.0.0
   
   # Permissions
   permission_handler: ^12.0.1
@@ -42,15 +42,15 @@ dependencies:
   wakelock_plus: ^1.2.8
 
   # Battery
-  battery_plus: ^6.2.0
+  battery_plus: ^7.1.1
   
   # High Refresh Rate
   flutter_displaymode: ^0.7.0
   
   # File Operations
   path_provider: ^2.1.5
-  share_plus: ^12.0.1
-  file_picker: ^11.0.2
+  share_plus: ^13.2.1
+  file_picker: ^12.0.0-beta.7
   open_filex: ^4.6.0
   
   # URL Launcher

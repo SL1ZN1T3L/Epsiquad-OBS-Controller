@@ -158,18 +158,34 @@ class OBSProvider extends ChangeNotifier {
     if (_isConnecting) return false;
 
     if (!isReconnect) {
+      _reconnectTimer?.cancel();
+      _reconnectCountdownTimer?.cancel();
       _reconnectAttempt = 0;
     }
     _manualDisconnect = false;
     _isConnecting = true;
-    _connectionError = null;
+    // При автопереподключении показываем номер попытки и в фазе
+    // подключения — иначе виден только голый «Подключение...».
+    _connectionError = isReconnect
+        ? 'Подключение... (попытка $_reconnectAttempt/$_maxReconnectAttempts)'
+        : null;
     _currentConnection = connection;
     notifyListeners();
 
     try {
-      final success = await _obsService.connect(connection);
+      // Предохранитель: что бы ни зависло внутри сервиса, попытка
+      // подключения не может блокировать цикл реконнекта дольше 30с.
+      final success = await _obsService.connect(connection).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          log.e(_tag, 'Connect attempt exceeded 30s, aborting');
+          _obsService.disconnect();
+          return false;
+        },
+      );
       if (!success) {
-        _connectionError = 'Не удалось подключиться';
+        // onError мог уже записать конкретную причину (например, пароль)
+        _connectionError ??= 'Не удалось подключиться';
         log.w(_tag, 'Connection failed to ${connection.name}');
       }
       return success;
@@ -227,6 +243,12 @@ class OBSProvider extends ChangeNotifier {
     }
 
     await _fetchInitialData();
+
+    // Если экран с индикаторами громкости открыт, восстанавливаем
+    // подписку на InputVolumeMeters — новый Identify ушёл с базовым 511.
+    if (_volumeListenerCount > 0) {
+      _obsService.reidentify(66047);
+    }
 
     await _foregroundService.start();
     _foregroundService
@@ -291,8 +313,13 @@ class OBSProvider extends ChangeNotifier {
       _reconnectCountdownTimer?.cancel();
       if (_manualDisconnect || isConnected) return;
 
-      _connectionError = 'Подключение...';
-      notifyListeners();
+      // Уже идёт попытка (например, запущенная вручную) — не накладываемся,
+      // переносим этот цикл без расхода попытки.
+      if (_isConnecting) {
+        _reconnectAttempt--;
+        _scheduleReconnect();
+        return;
+      }
 
       log.i(_tag, 'Auto-reconnect: trying...');
       final success = await connect(_currentConnection!, isReconnect: true);
@@ -338,7 +365,13 @@ class OBSProvider extends ChangeNotifier {
     _consecutiveSyncFailures = 0;
     log.w(_tag, 'Forcing disconnect: $reason');
     _connectionError = reason;
-    _obsService.disconnect();
+    // disconnect() сервиса отменяет подписку до закрытия сокета, поэтому
+    // onDone стрима (и колбэк onDisconnected) не сработает. Вызываем
+    // обработчик разрыва вручную — он запускает автопереподключение.
+    _obsService.disconnect().whenComplete(() {
+      _forceDisconnectInProgress = false;
+      _onDisconnected(reason);
+    });
   }
 
   /// Через [delayMs] выполняет [verify]. Используется для post-action
@@ -368,7 +401,8 @@ class OBSProvider extends ChangeNotifier {
 
   void _onError(String error) {
     log.e(_tag, 'Error: $error');
-    _connectionError = error;
+    _connectionError =
+        error.contains('auth_failed') ? 'Неверный пароль' : error;
     notifyListeners();
   }
 
@@ -415,6 +449,13 @@ class OBSProvider extends ChangeNotifier {
       case 'ReplayBufferStateChanged':
         _handleReplayBufferStateChanged(data);
         break;
+      case 'StudioModeStateChanged':
+        final enabled = data['studioModeEnabled'] as bool?;
+        if (enabled != null) {
+          _status = _status.copyWith(studioModeEnabled: enabled);
+          notifyListeners();
+        }
+        break;
       case 'InputVolumeMeters':
         _handleVolumeMeterEvent(data);
         break;
@@ -434,6 +475,13 @@ class OBSProvider extends ChangeNotifier {
       await _fetchScenes();
       await _syncStatusFromOBS();
       await _fetchAudioSources();
+
+      try {
+        final studioMode = await _obsService.getStudioModeEnabled();
+        _status = _status.copyWith(studioModeEnabled: studioMode);
+      } catch (e) {
+        log.w(_tag, 'Error fetching studio mode', e.toString());
+      }
 
       notifyListeners();
     } catch (e) {
@@ -613,7 +661,20 @@ class OBSProvider extends ChangeNotifier {
             ))
         .toList();
 
-    _fetchSceneItems(sceneName);
+    // Заменяем список источников только если пользователь не выбрал
+    // другую сцену вручную — иначе дропдаун показывал бы одну сцену,
+    // а список содержал бы элементы другой.
+    if (_selectedSceneForItems == null ||
+        _selectedSceneForItems == sceneName) {
+      _fetchSceneItems(sceneName);
+    } else {
+      _obsService.getSceneItemList(sceneName).then((items) {
+        _allSceneItems[sceneName] = items;
+        notifyListeners();
+      }).catchError((e) {
+        log.w(_tag, 'Error refreshing items for $sceneName', e.toString());
+      });
+    }
     notifyListeners();
   }
 
@@ -1172,16 +1233,24 @@ class OBSProvider extends ChangeNotifier {
   Future<void> toggleVirtualCam() async {
     if (!isConnected) return;
     log.i(_tag, 'Toggling virtual cam');
-    await _obsService.toggleVirtualCam();
+    try {
+      await _obsService.toggleVirtualCam();
+    } catch (e) {
+      log.e(_tag, 'Error toggling virtual cam', e.toString());
+    }
   }
 
   Future<void> toggleStudioMode() async {
     if (!isConnected) return;
     final currentState = _status.studioModeEnabled;
     log.i(_tag, 'Toggling studio mode: ${!currentState}');
-    await _obsService.setStudioModeEnabled(!currentState);
-    _status = _status.copyWith(studioModeEnabled: !currentState);
-    notifyListeners();
+    try {
+      await _obsService.setStudioModeEnabled(!currentState);
+      _status = _status.copyWith(studioModeEnabled: !currentState);
+      notifyListeners();
+    } catch (e) {
+      log.e(_tag, 'Error toggling studio mode', e.toString());
+    }
   }
 
   Future<void> triggerHotkey(String hotkeyName) async {
@@ -1215,15 +1284,28 @@ class OBSProvider extends ChangeNotifier {
               )
               .name;
 
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final path = '/storage/emulated/0/Pictures/OBS_Screenshot_$timestamp.png';
+      // SaveSourceScreenshot сохраняет файл на машине с OBS, поэтому
+      // используем её папку записи — она гарантированно существует.
+      final recordDir = await _obsService.getRecordDirectory();
+      if (recordDir == null || recordDir.isEmpty) {
+        log.w(_tag, 'Record directory unavailable, screenshot aborted');
+        return null;
+      }
 
-      await _obsService.saveSourceScreenshot(
+      final separator = recordDir.contains('\\') ? '\\' : '/';
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final path = '$recordDir${separator}OBS_Screenshot_$timestamp.png';
+
+      final ok = await _obsService.saveSourceScreenshot(
         sourceName: source,
         imageFilePath: path,
       );
+      if (!ok) {
+        log.w(_tag, 'SaveSourceScreenshot rejected by OBS');
+        return null;
+      }
 
-      log.i(_tag, 'Screenshot saved: $path');
+      log.i(_tag, 'Screenshot saved on OBS host: $path');
       return path;
     } catch (e) {
       log.e(_tag, 'Error saving screenshot', e.toString());

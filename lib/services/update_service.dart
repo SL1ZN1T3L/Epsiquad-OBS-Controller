@@ -163,6 +163,7 @@ class UpdateService {
       final response = await request.close();
 
       if (response.statusCode != 200) {
+        client.close();
         return UpdateCheckResult(
           hasUpdate: false,
           currentVersion: currentVersion,
@@ -171,6 +172,7 @@ class UpdateService {
       }
 
       final responseBody = await response.transform(utf8.decoder).join();
+      client.close();
       final releases = json.decode(responseBody) as List<dynamic>;
 
       // Ищем релиз в зависимости от выбранного канала
@@ -226,19 +228,22 @@ class UpdateService {
     }
   }
 
-  /// Сравнивает версии (поддерживает формат X.Y.Z)
+  /// Сравнивает версии (поддерживает формат X.Y.Z, суффиксы
+  /// пре-релизов и билдов вида 3.8.0-beta+42 отбрасываются)
   bool _isNewerVersion(String remote, String current) {
     try {
-      final remoteParts = remote.split('.').map(int.parse).toList();
-      final currentParts = current.split('.').map(int.parse).toList();
+      List<int> parseParts(String version) {
+        final core = version.split(RegExp(r'[-+]')).first;
+        final parts =
+            core.split('.').map((p) => int.tryParse(p) ?? 0).toList();
+        while (parts.length < 3) {
+          parts.add(0);
+        }
+        return parts;
+      }
 
-      // Дополняем до 3 частей
-      while (remoteParts.length < 3) {
-        remoteParts.add(0);
-      }
-      while (currentParts.length < 3) {
-        currentParts.add(0);
-      }
+      final remoteParts = parseParts(remote);
+      final currentParts = parseParts(current);
 
       for (var i = 0; i < 3; i++) {
         if (remoteParts[i] > currentParts[i]) return true;
@@ -247,7 +252,7 @@ class UpdateService {
 
       return false;
     } catch (e) {
-      debugPrint('Ошибка сравнения версий: $e');
+      debugPrint('Version compare error: $e');
       return false;
     }
   }
@@ -269,6 +274,7 @@ class UpdateService {
     final response = await request.close();
 
     if (response.statusCode != 200) {
+      client.close();
       throw Exception('Ошибка скачивания: ${response.statusCode}');
     }
 
@@ -296,6 +302,7 @@ class UpdateService {
       }
     }
     await sink.close();
+    client.close();
 
     return file.path;
   }
