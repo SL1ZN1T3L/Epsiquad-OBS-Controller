@@ -1600,7 +1600,7 @@ class _ScenePreviewDialog extends StatefulWidget {
 }
 
 class _ScenePreviewDialogState extends State<_ScenePreviewDialog> {
-  String? _imageData;
+  Uint8List? _imageBytes;
   bool _isLoading = true;
   bool _active = true;
   double _fps = 0;
@@ -1642,8 +1642,18 @@ class _ScenePreviewDialogState extends State<_ScenePreviewDialog> {
           ? sw.elapsedMilliseconds.clamp(frameDuration.inMilliseconds, 10000)
           : frameDuration.inMilliseconds;
 
+      // Декодируем один раз здесь, а не в build() на каждый ребилд.
+      Uint8List? bytes = _imageBytes;
+      if (data != null) {
+        try {
+          bytes = base64Decode(data.split(',').last);
+        } catch (_) {
+          // оставляем предыдущий кадр
+        }
+      }
+
       setState(() {
-        _imageData = data;
+        _imageBytes = bytes;
         _isLoading = false;
         _fps = 1000 / totalMs;
       });
@@ -1692,14 +1702,14 @@ class _ScenePreviewDialogState extends State<_ScenePreviewDialog> {
               padding: EdgeInsets.all(48),
               child: CircularProgressIndicator(),
             )
-          else if (_imageData != null)
+          else if (_imageBytes != null)
             ClipRRect(
               borderRadius: const BorderRadius.only(
                 bottomLeft: Radius.circular(12),
                 bottomRight: Radius.circular(12),
               ),
               child: Image.memory(
-                base64Decode(_imageData!.split(',').last),
+                _imageBytes!,
                 fit: BoxFit.contain,
                 gaplessPlayback: true,
               ),

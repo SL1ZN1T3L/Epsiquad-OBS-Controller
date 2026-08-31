@@ -16,6 +16,15 @@ import 'log_screen.dart';
 import '../services/log_service.dart';
 import '../services/power_service.dart';
 
+/// Кэш SharedPreferences для карточек настроек.
+///
+/// Карточки живут внутри ListView: при прокрутке их State уничтожается и
+/// создаётся заново. Если читать значения асинхронно, карточка сначала
+/// строится в загрузочном/дефолтном виде, а через кадр «вырастает» — и весь
+/// список под ней скачком уезжает. Держим уже полученный экземпляр, чтобы
+/// читать настройки синхронно в initState и сразу строить финальный размер.
+SharedPreferences? _cachedPrefs;
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -26,6 +35,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   BackupService? _backupService;
   UpdateService? _updateService;
+  Future<List<File>>? _backupFilesFuture;
   bool _isLoading = false;
   bool _isCheckingUpdate = false;
   bool _isInitialized = false;
@@ -42,14 +52,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     final info = await PackageInfo.fromPlatform();
     if (mounted) {
+      // Список карточек появляется только сейчас (после async-загрузки).
+      // Сбрасываем флаг перед первой отрисовкой, чтобы видимые карточки
+      // анимировались; после кадра — снова true, и подгруженные скроллом
+      // карточки уже не анимируются.
+      // Кэшируем prefs до первой отрисовки: карточки прочитают настройки
+      // синхронно и сразу построятся в финальном размере.
+      _cachedPrefs = prefs;
+      final backup = BackupService(prefs);
+      _AnimatedCardState.initialFramePassed = false;
       setState(() {
-        _backupService = BackupService(prefs);
+        _backupService = backup;
         _updateService = UpdateService(prefs);
+        // future создаётся один раз, а не в build(): иначе каждый ребилд
+        // перезапускал загрузку и подменял список заглушкой другой высоты.
+        _backupFilesFuture = backup.getBackupFiles();
         _version = info.version;
         _buildNumber = info.buildNumber;
         _isInitialized = true;
       });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _AnimatedCardState.initialFramePassed = true;
+      });
     }
+  }
+
+  /// Перечитывает список файлов бэкапов (после создания/удаления).
+  void _refreshBackupFiles() {
+    final service = _backupService;
+    if (service == null) return;
+    setState(() {
+      _backupFilesFuture = service.getBackupFiles();
+    });
   }
 
   @override
@@ -186,7 +220,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 8),
 
           FutureBuilder<List<File>>(
-            future: _backupService!.getBackupFiles(),
+            future: _backupFilesFuture,
             builder: (context, snapshot) {
               if (!snapshot.hasData || snapshot.data!.isEmpty) {
                 return const _AnimatedCard(
@@ -343,7 +377,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final path = await _backupService!.exportToFile();
       if (mounted) {
         _showSuccess('Бэкап сохранён:\n${path.split('/').last}');
-        setState(() {}); // Обновить список файлов
+        _refreshBackupFiles();
       }
     } catch (e) {
       if (mounted) {
@@ -377,13 +411,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _importBackup() async {
     try {
+      // file_picker 12.1+: pickFiles возвращает List<PlatformFile>
+      // (пустой, если пользователь отменил выбор).
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['json'],
       );
 
-      if (result != null && result.files.single.path != null) {
-        await _restoreFromFile(result.files.single.path!);
+      if (result.isNotEmpty && result.first.path != null) {
+        await _restoreFromFile(result.first.path!);
       }
     } catch (e) {
       if (mounted) {
@@ -530,7 +566,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirm == true) {
       await _backupService!.deleteBackup(path);
       if (mounted) {
-        setState(() {});
+        _refreshBackupFiles();
         _showSuccess('Бэкап удалён');
       }
     }
@@ -846,6 +882,12 @@ class _AnimatedCard extends StatefulWidget {
 
 class _AnimatedCardState extends State<_AnimatedCard>
     with SingleTickerProviderStateMixin {
+  // Анимируем появление только у карточек, созданных в первом кадре экрана.
+  // Карточки, чьё состояние создаётся позже (когда они вплывают в область
+  // видимости при прокрутке ListView), показываем сразу — иначе они
+  // «выскакивают» с fade+сдвигом прямо во время скролла.
+  static bool initialFramePassed = false;
+
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -868,7 +910,12 @@ class _AnimatedCardState extends State<_AnimatedCard>
       parent: _controller,
       curve: Curves.easeOut,
     ));
-    _controller.forward();
+    if (initialFramePassed) {
+      // Подгрузилась при прокрутке — без анимации.
+      _controller.value = 1.0;
+    } else {
+      _controller.forward();
+    }
   }
 
   @override
@@ -926,7 +973,24 @@ class _ScreenSaverSettingsCardState extends State<_ScreenSaverSettingsCard> {
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    final prefs = _cachedPrefs;
+    if (prefs != null) {
+      _fullscreen = _readFullscreen(prefs);
+      _isLoading = false;
+    } else {
+      _loadSettings();
+    }
+  }
+
+  static bool _readFullscreen(SharedPreferences prefs) {
+    final settingsJson = prefs.getString('app_settings');
+    if (settingsJson == null) return false;
+    try {
+      final settings = Map<String, dynamic>.from(jsonDecode(settingsJson));
+      return settings['fullscreenMode'] ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -1222,7 +1286,13 @@ class _ConfirmationSettingsCardState extends State<_ConfirmationSettingsCard> {
   @override
   void initState() {
     super.initState();
-    _load();
+    final prefs = _cachedPrefs;
+    if (prefs != null) {
+      _confirmStream = prefs.getBool('confirmStopStream') ?? true;
+      _confirmRecord = prefs.getBool('confirmStopRecord') ?? true;
+    } else {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -1284,7 +1354,14 @@ class _ReminderSettingsCardState extends State<_ReminderSettingsCard> {
   @override
   void initState() {
     super.initState();
-    _load();
+    final prefs = _cachedPrefs;
+    if (prefs != null) {
+      _interval = prefs.getInt('reminderInterval') ?? 0;
+      _message = prefs.getString('reminderMessage') ?? 'Напоминание';
+      _messageController.text = _message;
+    } else {
+      _load();
+    }
   }
 
   @override
@@ -1381,7 +1458,12 @@ class _LogSettingsCardState extends State<_LogSettingsCard> {
   @override
   void initState() {
     super.initState();
-    _load();
+    final prefs = _cachedPrefs;
+    if (prefs != null) {
+      _enabled = prefs.getBool('loggingEnabled') ?? true;
+    } else {
+      _load();
+    }
   }
 
   Future<void> _load() async {

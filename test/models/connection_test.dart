@@ -162,6 +162,57 @@ void main() {
         expect(copy.port, 4444);
         expect(copy.isDefault, true);
       });
+
+      test('сохраняет пароль, если он не передан', () {
+        final original = OBSConnection(
+          id: 'test-id',
+          name: 'Original',
+          host: '192.168.1.1',
+          password: 'secret',
+        );
+
+        final copy = original.copyWith(name: 'Renamed');
+
+        expect(copy.password, 'secret');
+      });
+
+      test('очищает пароль при передаче null', () {
+        final original = OBSConnection(
+          id: 'test-id',
+          name: 'Original',
+          host: '192.168.1.1',
+          password: 'secret',
+        );
+
+        final copy = original.copyWith(password: null);
+
+        expect(copy.password, isNull);
+      });
+    });
+
+    group('useTls', () {
+      test('по умолчанию выключен', () {
+        final connection = OBSConnection(
+          id: 'test-id',
+          name: 'Test',
+          host: '192.168.1.1',
+        );
+
+        expect(connection.useTls, false);
+      });
+
+      test('сохраняется через fromJson/toJson', () {
+        final original = OBSConnection(
+          id: 'tls-id',
+          name: 'TLS Server',
+          host: '10.0.0.1',
+          useTls: true,
+        );
+
+        final restored = OBSConnection.fromJson(original.toJson());
+
+        expect(restored.useTls, true);
+      });
     });
 
     test('toString возвращает читаемый формат', () {

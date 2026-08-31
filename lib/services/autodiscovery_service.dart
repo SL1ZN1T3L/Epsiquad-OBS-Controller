@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'log_service.dart';
@@ -68,18 +69,44 @@ class AutoDiscoveryService {
 
   static Future<DiscoveredOBS?> _checkHost(
       String ip, int port, Duration timeout) async {
+    Socket? socket;
     try {
       final sw = Stopwatch()..start();
-      final socket = await Socket.connect(ip, port, timeout: timeout);
+      socket = await Socket.connect(ip, port, timeout: timeout);
       sw.stop();
       socket.destroy();
+
+      // Открытый порт — ещё не OBS. Подтверждаем WebSocket-хендшейком:
+      // obs-websocket сразу присылает Hello (op=0). Это отсекает любые
+      // другие сервисы, случайно слушающие тот же порт.
+      final confirmed = await _verifyObs(ip, port, timeout);
+      if (!confirmed) return null;
+
       return DiscoveredOBS(
         ip: ip,
         port: port,
         responseTimeMs: sw.elapsedMilliseconds,
       );
     } catch (_) {
+      socket?.destroy();
       return null;
+    }
+  }
+
+  /// Подключается по WebSocket и проверяет, что первый кадр — Hello (op=0).
+  static Future<bool> _verifyObs(String ip, int port, Duration timeout) async {
+    WebSocket? ws;
+    try {
+      ws = await WebSocket.connect('ws://$ip:$port').timeout(timeout);
+      final firstMessage = await ws.first.timeout(timeout);
+      final data = json.decode(firstMessage as String) as Map<String, dynamic>;
+      return data['op'] == 0;
+    } catch (_) {
+      return false;
+    } finally {
+      try {
+        await ws?.close();
+      } catch (_) {}
     }
   }
 }

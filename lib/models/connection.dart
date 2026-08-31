@@ -1,3 +1,7 @@
+/// Сентинел для copyWith: отличает «параметр не передан» от «передан null».
+/// Нужен, чтобы можно было очистить пароль через copyWith(password: null).
+const Object _unset = Object();
+
 class OBSConnection {
   final String id;
   final String name;
@@ -7,6 +11,7 @@ class OBSConnection {
   final bool isDefault;
   final DateTime? lastConnected;
   final String iconName;
+  final bool useTls;
 
   static const defaultIcon = 'computer';
 
@@ -19,6 +24,7 @@ class OBSConnection {
     this.isDefault = false,
     this.lastConnected,
     this.iconName = defaultIcon,
+    this.useTls = false,
   });
 
   factory OBSConnection.fromJson(Map<String, dynamic> json) {
@@ -33,6 +39,7 @@ class OBSConnection {
           ? DateTime.parse(json['lastConnected'] as String)
           : null,
       iconName: json['iconName'] as String? ?? defaultIcon,
+      useTls: json['useTls'] as bool? ?? false,
     );
   }
 
@@ -46,6 +53,7 @@ class OBSConnection {
       'isDefault': isDefault,
       'lastConnected': lastConnected?.toIso8601String(),
       'iconName': iconName,
+      'useTls': useTls,
     };
   }
 
@@ -56,20 +64,25 @@ class OBSConnection {
     String? name,
     String? host,
     int? port,
-    String? password,
+    Object? password = _unset,
     bool? isDefault,
-    DateTime? lastConnected,
+    Object? lastConnected = _unset,
     String? iconName,
+    bool? useTls,
   }) {
     return OBSConnection(
       id: id ?? this.id,
       name: name ?? this.name,
       host: host ?? this.host,
       port: port ?? this.port,
-      password: password ?? this.password,
+      password:
+          identical(password, _unset) ? this.password : password as String?,
       isDefault: isDefault ?? this.isDefault,
-      lastConnected: lastConnected ?? this.lastConnected,
+      lastConnected: identical(lastConnected, _unset)
+          ? this.lastConnected
+          : lastConnected as DateTime?,
       iconName: iconName ?? this.iconName,
+      useTls: useTls ?? this.useTls,
     );
   }
 

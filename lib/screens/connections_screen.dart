@@ -364,6 +364,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
   late TextEditingController _passwordController;
   bool _showPassword = false;
   bool _isLoading = false;
+  bool _useTls = false;
   late String _selectedIcon;
 
   @override
@@ -382,9 +383,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       text: widget.connection?.password ?? '',
     );
     _selectedIcon = widget.connection?.iconName ?? OBSConnection.defaultIcon;
-
-    debugPrint(
-        'ConnectionDialog init: host=${widget.connection?.host}, password=${widget.connection?.password}');
+    _useTls = widget.connection?.useTls ?? false;
   }
 
   @override
@@ -504,6 +503,17 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
               ),
               obscureText: !_showPassword,
             ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _useTls,
+              onChanged: (v) => setState(() => _useTls = v),
+              title: const Text('Шифрование TLS (wss://)'),
+              subtitle: const Text(
+                'Включите, если OBS доступен через защищённый прокси/туннель',
+              ),
+              secondary: const Icon(Icons.https),
+            ),
           ],
         ),
       ),
@@ -559,9 +569,10 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       isDefault: widget.connection?.isDefault ?? false,
       lastConnected: widget.connection?.lastConnected,
       iconName: _selectedIcon,
+      useTls: _useTls,
     );
 
-    debugPrint('Saving connection: ${connection.toJson()}');
+    debugPrint('Saving connection: ${connection.name} (${connection.address})');
 
     try {
       if (isExisting) {

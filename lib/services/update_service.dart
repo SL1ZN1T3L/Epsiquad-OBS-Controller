@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -14,6 +15,7 @@ class ReleaseInfo {
   final String body;
   final String htmlUrl;
   final String? apkDownloadUrl;
+  final String? apkSha256Url;
   final DateTime publishedAt;
 
   ReleaseInfo({
@@ -23,19 +25,23 @@ class ReleaseInfo {
     required this.body,
     required this.htmlUrl,
     this.apkDownloadUrl,
+    this.apkSha256Url,
     required this.publishedAt,
   });
 
   factory ReleaseInfo.fromJson(Map<String, dynamic> json) {
-    // Ищем APK в assets
+    // Ищем APK и (опционально) файл контрольной суммы в assets
     String? apkUrl;
+    String? shaUrl;
     final assets = json['assets'] as List<dynamic>?;
     if (assets != null) {
       for (final asset in assets) {
         final name = asset['name'] as String? ?? '';
+        final url = asset['browser_download_url'] as String?;
         if (name.endsWith('.apk')) {
-          apkUrl = asset['browser_download_url'] as String?;
-          break;
+          apkUrl ??= url;
+        } else if (name.endsWith('.sha256') || name.endsWith('.apk.sha256')) {
+          shaUrl ??= url;
         }
       }
     }
@@ -51,6 +57,7 @@ class ReleaseInfo {
       body: json['body'] as String? ?? '',
       htmlUrl: json['html_url'] as String? ?? '',
       apkDownloadUrl: apkUrl,
+      apkSha256Url: shaUrl,
       publishedAt: DateTime.tryParse(json['published_at'] as String? ?? '') ??
           DateTime.now(),
     );
@@ -86,6 +93,9 @@ class UpdateService {
   static const String _autoCheckKey = 'auto_check_updates';
   static const String _skippedVersionKey = 'skipped_update_version';
   static const String _updateChannelKey = 'update_channel';
+
+  static const Duration _connectTimeout = Duration(seconds: 15);
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
   final SharedPreferences _prefs;
 
@@ -147,23 +157,24 @@ class UpdateService {
 
   /// Проверяет наличие новой версии на GitHub
   Future<UpdateCheckResult> checkForUpdates({bool force = false}) async {
+    final client = HttpClient()..connectionTimeout = _connectTimeout;
     try {
       final packageInfo = await PackageInfo.fromPlatform();
       final currentVersion = packageInfo.version;
 
-      // Получаем последний релиз (не пре-релиз) с GitHub API
-      final client = HttpClient();
-      final request = await client.getUrl(
-        Uri.parse(
-            'https://api.github.com/repos/$_repoOwner/$_repoName/releases'),
-      );
+      // Получаем список релизов с GitHub API
+      final request = await client
+          .getUrl(
+            Uri.parse(
+                'https://api.github.com/repos/$_repoOwner/$_repoName/releases'),
+          )
+          .timeout(_requestTimeout);
       request.headers.add('Accept', 'application/vnd.github.v3+json');
       request.headers.add('User-Agent', 'OBS-Controller-App');
 
-      final response = await request.close();
+      final response = await request.close().timeout(_requestTimeout);
 
       if (response.statusCode != 200) {
-        client.close();
         return UpdateCheckResult(
           hasUpdate: false,
           currentVersion: currentVersion,
@@ -171,8 +182,8 @@ class UpdateService {
         );
       }
 
-      final responseBody = await response.transform(utf8.decoder).join();
-      client.close();
+      final responseBody =
+          await response.transform(utf8.decoder).join().timeout(_requestTimeout);
       final releases = json.decode(responseBody) as List<dynamic>;
 
       // Ищем релиз в зависимости от выбранного канала
@@ -225,6 +236,8 @@ class UpdateService {
         currentVersion: '',
         error: 'Ошибка подключения: $e',
       );
+    } finally {
+      client.close();
     }
   }
 
@@ -267,44 +280,88 @@ class UpdateService {
       throw Exception('APK файл не найден в релизе');
     }
 
-    final client = HttpClient();
-    final request = await client.getUrl(Uri.parse(release.apkDownloadUrl!));
-    request.headers.add('User-Agent', 'OBS-Controller-App');
+    final client = HttpClient()..connectionTimeout = _connectTimeout;
+    try {
+      final request = await client
+          .getUrl(Uri.parse(release.apkDownloadUrl!))
+          .timeout(_requestTimeout);
+      request.headers.add('User-Agent', 'OBS-Controller-App');
 
-    final response = await request.close();
+      final response = await request.close().timeout(_requestTimeout);
 
-    if (response.statusCode != 200) {
-      client.close();
-      throw Exception('Ошибка скачивания: ${response.statusCode}');
-    }
-
-    // Получаем директорию для скачивания
-    final dir = await getExternalStorageDirectory();
-    if (dir == null) {
-      throw Exception('Не удалось получить директорию для скачивания');
-    }
-
-    final fileName = 'OBS-Controller-${release.version}.apk';
-    final file = File('${dir.path}/$fileName');
-
-    // Получаем размер файла
-    final contentLength = response.contentLength;
-    var downloadedBytes = 0;
-
-    // Скачиваем файл
-    final sink = file.openWrite();
-    await for (final chunk in response) {
-      sink.add(chunk);
-      downloadedBytes += chunk.length;
-
-      if (contentLength > 0 && onProgress != null) {
-        onProgress(downloadedBytes / contentLength);
+      if (response.statusCode != 200) {
+        throw Exception('Ошибка скачивания: ${response.statusCode}');
       }
-    }
-    await sink.close();
-    client.close();
 
-    return file.path;
+      // Получаем директорию для скачивания
+      final dir = await getExternalStorageDirectory();
+      if (dir == null) {
+        throw Exception('Не удалось получить директорию для скачивания');
+      }
+
+      final fileName = 'OBS-Controller-${release.version}.apk';
+      final file = File('${dir.path}/$fileName');
+
+      // Получаем размер файла
+      final contentLength = response.contentLength;
+      var downloadedBytes = 0;
+
+      // Скачиваем файл
+      final sink = file.openWrite();
+      try {
+        await for (final chunk in response) {
+          sink.add(chunk);
+          downloadedBytes += chunk.length;
+
+          if (contentLength > 0 && onProgress != null) {
+            onProgress(downloadedBytes / contentLength);
+          }
+        }
+      } finally {
+        await sink.close();
+      }
+
+      // Проверяем контрольную сумму, если релиз её публикует.
+      await _verifyChecksum(client, file, release.apkSha256Url);
+
+      return file.path;
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Сверяет SHA256 скачанного файла с опубликованной суммой.
+  /// Если релиз не содержит .sha256 — проверка пропускается (не фатально).
+  Future<void> _verifyChecksum(
+      HttpClient client, File file, String? shaUrl) async {
+    if (shaUrl == null) return;
+    try {
+      final request =
+          await client.getUrl(Uri.parse(shaUrl)).timeout(_requestTimeout);
+      request.headers.add('User-Agent', 'OBS-Controller-App');
+      final response = await request.close().timeout(_requestTimeout);
+      if (response.statusCode != 200) return; // не смогли получить — пропускаем
+
+      final body =
+          await response.transform(utf8.decoder).join().timeout(_requestTimeout);
+      // Формат файла обычно "<hex>  filename" — берём первый токен.
+      final expected = body.trim().split(RegExp(r'\s+')).first.toLowerCase();
+      if (expected.length != 64) return; // не похоже на sha256 — пропускаем
+
+      final actual = sha256.convert(await file.readAsBytes()).toString();
+      if (actual.toLowerCase() != expected) {
+        // Файл повреждён или подменён — удаляем и прерываем установку.
+        try {
+          await file.delete();
+        } catch (_) {}
+        throw Exception('Контрольная сумма не совпала — файл повреждён');
+      }
+      debugPrint('APK checksum verified OK');
+    } on Exception catch (e) {
+      // Ошибку несовпадения пробрасываем, сетевые проблемы проверки — нет.
+      if (e.toString().contains('Контрольная сумма')) rethrow;
+      debugPrint('Checksum verify skipped: $e');
+    }
   }
 
   /// Устанавливает скачанный APK (открывает установщик)

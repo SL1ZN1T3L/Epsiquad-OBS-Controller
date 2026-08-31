@@ -13,8 +13,11 @@ permissions:
   contents: write  # Разрешение на создание релизов
 
 env:
-  FLUTTER_VERSION: '3.44.x'
+  FLUTTER_VERSION: '3.47.x'
   JAVA_VERSION: '17'
+  # compileSdk проекта: на раннере платформы 37 нет, ставим явно
+  ANDROID_COMPILE_SDK: '37'
+  ANDROID_BUILD_TOOLS: '37.0.0'
 
 jobs:
   # ==================== Анализ и тесты ====================
@@ -63,6 +66,19 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: 'gradle'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # compileSdk = 37 (требование flutter_secure_storage 11). На ubuntu-latest
+      # эта платформа не предустановлена — без неё сборка падает с
+      # "Failed to find target with hash string 'android-37'".
+      - name: Install Android SDK platform ${{ env.ANDROID_COMPILE_SDK }}
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install \
+            "platforms;android-${{ env.ANDROID_COMPILE_SDK }}" \
+            "build-tools;${{ env.ANDROID_BUILD_TOOLS }}"
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -97,6 +113,11 @@ jobs:
           fi
           mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/OBS-Controller.apk
 
+      # Приложение сверяет SHA256 скачанного APK, если релиз публикует .sha256
+      - name: Generate SHA256 checksum
+        working-directory: build/app/outputs/flutter-apk
+        run: sha256sum OBS-Controller.apk > OBS-Controller.apk.sha256
+
       - name: Upload Debug APK
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
@@ -109,7 +130,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
-          path: build/app/outputs/flutter-apk/OBS-Controller.apk
+          path: |
+            build/app/outputs/flutter-apk/OBS-Controller.apk
+            build/app/outputs/flutter-apk/OBS-Controller.apk.sha256
           retention-days: 30
 
   # ==================== Релиз (при теге) ====================
@@ -130,7 +153,9 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: OBS-Controller.apk
+          files: |
+            OBS-Controller.apk
+            OBS-Controller.apk.sha256
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1225,9 +1225,38 @@ class OBSProvider extends ChangeNotifier {
     });
   }
 
-  Future<void> setAudioVolume(String inputName, double volume) async {
+  // Троттлинг громкости: слайдер шлёт десятки значений в секунду. Отправляем
+  // сразу (leading) и через окно ещё раз (trailing) — так финальное значение
+  // всегда доходит, а канал не заливается запросами.
+  final Map<String, double> _pendingVolume = {};
+  final Map<String, Timer> _volumeThrottle = {};
+  static const _volumeThrottleWindow = Duration(milliseconds: 100);
+
+  void setAudioVolume(String inputName, double volume) {
     if (!isConnected) return;
-    await _obsService.setInputVolume(inputName, volume);
+
+    // Оптимистично держим значение в модели, чтобы UI не «отскакивал».
+    final index = _audioSources.indexWhere((s) => s.name == inputName);
+    if (index != -1) {
+      _audioSources[index] = _audioSources[index].copyWith(volume: volume);
+    }
+
+    _pendingVolume[inputName] = volume;
+
+    final active = _volumeThrottle[inputName]?.isActive ?? false;
+    if (active) return; // trailing-таймер отправит последнее значение
+
+    _flushVolume(inputName); // leading edge
+    _volumeThrottle[inputName] =
+        Timer(_volumeThrottleWindow, () => _flushVolume(inputName));
+  }
+
+  void _flushVolume(String inputName) {
+    final v = _pendingVolume.remove(inputName);
+    if (v == null || !isConnected) return;
+    _obsService.setInputVolume(inputName, v).catchError((e) {
+      log.w(_tag, 'Error setting volume for $inputName', e.toString());
+    });
   }
 
   Future<void> toggleVirtualCam() async {
@@ -1544,6 +1573,10 @@ class OBSProvider extends ChangeNotifier {
     _reconnectTimer?.cancel();
     _reconnectCountdownTimer?.cancel();
     _statsSnapshotTimer?.cancel();
+    for (final t in _volumeThrottle.values) {
+      t.cancel();
+    }
+    _volumeThrottle.clear();
     PowerService.instance.removeListener(_onPowerProfileChanged);
     _volumeController.close();
     _obsService.dispose();

@@ -26,7 +26,14 @@ class BackupData {
   Map<String, dynamic> toJson() => {
         'version': version,
         'createdAt': createdAt.toIso8601String(),
-        'connections': connections.map((c) => c.toJson()).toList(),
+        // Пароли НЕ включаем в бэкап: файл часто пересылают/кладут в облако,
+        // а пароль от OBS WebSocket — это секрет. После восстановления
+        // пароль вводится заново.
+        'connections': connections.map((c) {
+          final map = c.toJson();
+          map.remove('password');
+          return map;
+        }).toList(),
         'settings': settings,
         'quickControlConfigs': quickControlConfigs,
         'extraPrefs': extraPrefs,
@@ -189,6 +196,9 @@ class BackupService {
       final connectionsJson =
           json.encode(backup.connections.map((c) => c.toJson()).toList());
       await _prefs.setString(_connectionsKey, connectionsJson);
+      // Если восстановили бэкап старого формата (с паролями в JSON) —
+      // просим приложение перенести их в защищённое хранилище при след. запуске.
+      await _prefs.setBool('pw_migrated_v1', false);
       debugPrint('Restored ${backup.connections.length} connections');
     }
 

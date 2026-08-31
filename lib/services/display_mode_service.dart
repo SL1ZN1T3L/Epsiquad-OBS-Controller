@@ -28,16 +28,49 @@ class DisplayModeService {
       final modes = await FlutterDisplayMode.supported;
       if (modes.isEmpty) return;
 
-      modes.sort((a, b) => b.refreshRate.compareTo(a.refreshRate));
+      DisplayMode? activeMode;
+      try {
+        activeMode = await FlutterDisplayMode.active;
+      } catch (_) {
+        // Не критично — просто не сможем отфильтровать по разрешению.
+      }
+      final active = activeMode;
 
-      _highRefreshMode = modes.first;
-      _standardMode = modes.firstWhere(
+      // Список supported содержит комбинации «разрешение + частота», а также
+      // служебный auto-режим (0x0@0). Переключаться можно ТОЛЬКО между
+      // режимами с тем же разрешением, что сейчас активно: иначе вместе с
+      // частотой меняется разрешение экрана, Flutter переразмечает весь UI,
+      // и пользователь видит резкий скачок интерфейса при касании.
+      var candidates = modes.where((m) => m.width > 0 && m.height > 0).toList();
+
+      if (active != null && active.width > 0 && active.height > 0) {
+        final sameResolution = candidates
+            .where((m) => m.width == active.width && m.height == active.height)
+            .toList();
+        if (sameResolution.isNotEmpty) candidates = sameResolution;
+      }
+
+      if (candidates.isEmpty) return;
+
+      candidates.sort((a, b) => b.refreshRate.compareTo(a.refreshRate));
+
+      _highRefreshMode = candidates.first;
+      _standardMode = candidates.firstWhere(
         (m) => m.refreshRate <= 60,
-        orElse: () => modes.last,
+        orElse: () => candidates.last,
       );
 
-      debugPrint('DisplayMode: high=${_highRefreshMode?.refreshRate}Hz, '
-          'standard=${_standardMode?.refreshRate}Hz');
+      // Если по факту доступна одна частота — переключать нечего, не трогаем
+      // экран вообще (иначе лишние вызовы setPreferredMode без пользы).
+      if (_highRefreshMode!.refreshRate == _standardMode!.refreshRate) {
+        debugPrint('DisplayMode: single refresh rate '
+            '(${_highRefreshMode!.refreshRate}Hz) — switching disabled');
+        return;
+      }
+
+      debugPrint('DisplayMode: ${_highRefreshMode!.width}x'
+          '${_highRefreshMode!.height} high=${_highRefreshMode!.refreshRate}Hz, '
+          'standard=${_standardMode!.refreshRate}Hz');
 
       _initialized = true;
 

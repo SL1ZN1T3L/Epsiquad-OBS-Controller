@@ -34,9 +34,11 @@ class OBSWebSocketService {
     if (_isConnecting) return false;
     _isConnecting = true;
 
-    log.i(_tag, 'Connecting to ${connection.host}:${connection.port}...');
+    final scheme = connection.useTls ? 'wss' : 'ws';
+    log.i(_tag,
+        'Connecting to $scheme://${connection.host}:${connection.port}...');
     try {
-      final uri = Uri.parse('ws://${connection.host}:${connection.port}');
+      final uri = Uri.parse('$scheme://${connection.host}:${connection.port}');
       _channel = WebSocketChannel.connect(uri);
 
       // ОС может держать попытку TCP-соединения к недоступному хосту
@@ -456,39 +458,50 @@ class OBSWebSocketService {
       }
     }
 
-    // Probe непрошедших источников параллельно.
+    // Probe непрошедших источников параллельно. Сразу запоминаем inputMuted
+    // из ответа — чтобы ниже не запрашивать GetInputMute повторно.
     final probeResults = await Future.wait(unknown.map((input) async {
       final name = input['inputName'] as String;
       try {
         final res = await _sendRequest('GetInputMute', {'inputName': name});
-        return _isOk(res) ? input : null;
+        if (!_isOk(res)) return null;
+        final muted = res['d']?['responseData']?['inputMuted'] as bool? ?? false;
+        return MapEntry(input, muted);
       } catch (_) {
         return null;
       }
     }));
 
-    final detected = [
-      ...knownAudio,
-      ...probeResults.whereType<Map<String, dynamic>>(),
-    ];
+    // mute-значения, уже полученные на этапе probe (по имени источника).
+    final probedMute = <String, bool>{};
+    final detected = <Map<String, dynamic>>[...knownAudio];
+    for (final entry
+        in probeResults.whereType<MapEntry<Map<String, dynamic>, bool>>()) {
+      detected.add(entry.key);
+      probedMute[entry.key['inputName'] as String] = entry.value;
+    }
 
     // Получение mute/volume для всех обнаруженных аудио-источников.
     final audioSources = await Future.wait(detected.map((input) async {
       final name = input['inputName'] as String;
       final kind = input['inputKind'] as String? ?? 'unknown';
 
-      bool isMuted = false;
+      bool isMuted = probedMute[name] ?? false;
       double volumeMul = 1.0;
 
-      try {
-        final muteResponse =
-            await _sendRequest('GetInputMute', {'inputName': name});
-        if (_isOk(muteResponse)) {
-          isMuted = muteResponse['d']?['responseData']?['inputMuted'] as bool? ??
-              false;
+      // Для probe-источников mute уже известен — лишний запрос не нужен.
+      if (!probedMute.containsKey(name)) {
+        try {
+          final muteResponse =
+              await _sendRequest('GetInputMute', {'inputName': name});
+          if (_isOk(muteResponse)) {
+            isMuted =
+                muteResponse['d']?['responseData']?['inputMuted'] as bool? ??
+                    false;
+          }
+        } catch (e) {
+          log.w(_tag, 'GetInputMute failed for $name', e.toString());
         }
-      } catch (e) {
-        log.w(_tag, 'GetInputMute failed for $name', e.toString());
       }
 
       try {
