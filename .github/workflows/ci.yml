@@ -15,7 +15,6 @@ permissions:
 env:
   FLUTTER_VERSION: '3.47.x'
   JAVA_VERSION: '17'
-  # compileSdk проекта: на раннере платформы 37 нет, ставим явно
   ANDROID_COMPILE_SDK: '37'
   ANDROID_BUILD_TOOLS: '37.0.0'
 
@@ -74,10 +73,30 @@ jobs:
       # "Failed to find target with hash string 'android-37'".
       - name: Install Android SDK platform ${{ env.ANDROID_COMPILE_SDK }}
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager --install \
-            "platforms;android-${{ env.ANDROID_COMPILE_SDK }}" \
-            "build-tools;${{ env.ANDROID_BUILD_TOOLS }}"
+          set -o pipefail
+          echo "--- окружение SDK ---"
+          echo "ANDROID_HOME=$ANDROID_HOME  ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          which sdkmanager || true
+          sdkmanager --version || true
+
+          echo "--- принимаем лицензии ---"
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+
+          echo "--- что доступно по API 36-38 ---"
+          sdkmanager --list 2>/dev/null | grep -E "platforms;android-3[6-8]" || \
+            echo "(в стабильном канале ничего не найдено)"
+
+          PLATFORM="platforms;android-${{ env.ANDROID_COMPILE_SDK }}"
+          TOOLS="build-tools;${{ env.ANDROID_BUILD_TOOLS }}"
+
+          echo "--- ставим $PLATFORM ---"
+          # Стабильный канал, при неудаче — preview/canary (API 37 может быть
+          # ещё не в stable, тогда пакет лежит в канале 3).
+          sdkmanager "$PLATFORM" "$TOOLS" \
+            || sdkmanager --channel=3 "$PLATFORM" "$TOOLS"
+
+          echo "--- установленные платформы ---"
+          ls -1 "$ANDROID_SDK_ROOT/platforms" || true
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
